@@ -1,0 +1,71 @@
+name: CI
+
+'on':
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python development dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Run application tests
+        run: npm run test
+
+      - name: Run tool runner tests
+        run: npm run test:tooling
+
+      - name: Run disposable PostgreSQL integration tests
+        run: npm run test:database
+
+      - name: Type-check application
+        run: npm run typecheck
+
+      - name: Lint application
+        run: npm run lint
+
+      - name: Build application
+        run: npm run build
+
+      - name: Smoke-test local production scaffold
+        run: node --test tests/smoke/scaffold.test.mjs
+
+      - name: Run Python regression tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Validate contract
+        run: python3 scripts/validate_contract.py --format json
+
+      - name: Validate coverage
+        run: python3 scripts/validate_coverage.py --format json
+
+      - name: Validate execution queue
+        run: python3 scripts/execution_queue.py --format json

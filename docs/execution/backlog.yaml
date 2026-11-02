@@ -1,0 +1,348 @@
+version: "1.0"
+updated: "2026-11-02"
+model: openai/gpt-6-luna
+dispatch_policy:
+  max_parallel: 3
+  max_repairs_per_task: 1
+  recursive_delegation: false
+  integration_owner: lead
+  cost_tracking: unknown_until_provider_reports
+  auto_dispatch: false
+gates:
+  - id: TECH_SPEC
+    status: satisfied
+    approval_scope: local_synthetic_development_only
+    evidence: docs/validation/W1_INTEGRATION_REPORT.md
+    description: Lead reviews executable-spec contradictions and approves technical task contracts; test_machine_ownership passes for all 20 definitions; BUILD-002 and BUILD-003 foundation work accepted; BUILD-004 and W3 remain gated by real evidence and technical review; missing regulatory facts stay explicit and fail closed.
+  - id: LIVE_EVIDENCE
+    status: pending
+    description: Client/AOR resolve release-relevant source conflicts, full DMP conditions, package scope, ENOC and appointment evidence.
+  - id: HOSTING_POLICY
+    status: pending
+    description: Client approves hosting, SSO, residency, secrets handling and AI processing/DPA before live integration.
+  - id: RELEASE_SIGNOFF
+    status: pending
+    description: All plan release gates proven with live evidence and independent Client/AOR/engineering acceptance; dependency advisories and framework/tooling support must be reviewed before production.
+tasks:
+  - id: ORCH-001
+    title: Define SDD/TDD operating model and dependency queue
+    wave: W0
+    kind: specification
+    owner: lead
+    status: done
+    evidence: docs/validation/W0_INTEGRATION_REPORT.md
+    depends_on: []
+    gates: []
+    write_scope: [docs/ORCHESTRATION.md, docs/execution/backlog.yaml, docs/execution/TASK_TEMPLATE.md]
+    acceptance: [Task contracts define sources and file ownership, Independent review and red-green evidence required, External approval gates remain pending]
+  - id: QA-001
+    title: Test-first structural contract validator
+    wave: W0
+    kind: tooling
+    owner: luna-validator
+    status: done
+    evidence: docs/validation/TDD_CONTRACT_REPORT.md
+    depends_on: []
+    gates: []
+    write_scope: [scripts/validate_contract.py, tests/test_validate_contract.py, requirements-dev.txt, docs/validation/TDD_CONTRACT_REPORT.md]
+    acceptance: [Actual red-green report, Invalid structures and duplicate YAML keys fail closed, Current 20-machine 173-transition contract validates, Structural results not represented as runtime coverage]
+  - id: QA-002
+    title: Test-first read-only dependency readiness CLI
+    wave: W0
+    kind: tooling
+    owner: luna-queue
+    status: done
+    evidence: docs/validation/TDD_QUEUE_REPORT.md
+    depends_on: []
+    gates: []
+    write_scope: [scripts/execution_queue.py, tests/test_execution_queue.py, docs/validation/TDD_QUEUE_REPORT.md]
+    acceptance: [Actual red-green report, Cycles and unknown references rejected, Pending gates and unfinished dependencies block readiness, No model calls or automatic dispatch]
+  - id: AUDIT-001
+    title: Independent spec safety and coverage audit
+    wave: W0
+    kind: review
+    owner: luna-auditor
+    status: done
+    evidence: docs/execution/SPEC_GAPS.md
+    depends_on: []
+    gates: []
+    write_scope: []
+    acceptance: [Line-cited findings, Contradictions distinguished from missing detail, Concrete red-test scenarios and human decision owners]
+  - id: SPEC-001
+    title: Triage audit and amend executable contract with approved decisions
+    wave: W1
+    kind: specification
+    owner: lead
+    status: done
+    evidence: docs/execution/SPEC_DECISIONS.md
+    depends_on: [ORCH-001, QA-001, AUDIT-001]
+    gates: []
+    write_scope: [docs/state-machines.yaml, docs/EXECUTION_PLAN.md, docs/execution/SPEC_DECISIONS.md, tests/test_sdd_contract.py]
+    acceptance: [Each finding resolved or blocked with owner, No invented DMP conditions, Reliance revocation and package scoping contracts explicit, Contract validator and pinned counts updated only intentionally]
+  - id: SPEC-002
+    title: Build requirement-to-test manifest for every declared transition and guard
+    wave: W1
+    kind: specification
+    owner: luna-test-designer
+    status: done
+    evidence: docs/execution/coverage-manifest.yaml
+    depends_on: [SPEC-001, QA-001, QA-002]
+    gates: []
+    write_scope: [docs/execution/coverage-manifest.yaml, scripts/validate_coverage.py, tests/test_coverage_manifest.py]
+    lead_integration_scope: validator_and_tests_written_by_lead_after_review
+    acceptance: [Every transition mapped to positive and negative cases, Guard false cases and all-true case explicit, Runtime coverage initially unknown not claimed complete, Seven-role and cross-machine invariants mapped]
+  - id: SPEC-003
+    title: Specify schema and atomic command interface
+    wave: W1
+    kind: specification
+    owner: luna-schema-designer
+    status: done
+    evidence: docs/execution/COMMAND_SCHEMA_SPEC.md
+    depends_on: [SPEC-001]
+    gates: []
+    write_scope: [docs/execution/COMMAND_SCHEMA_SPEC.md]
+    acceptance: [Expected-version and idempotency behavior defined, Ledger and outbox transaction boundaries defined, Evidence and approval validation distinct, API error cases and independent validator semantics defined]
+  - id: SPEC-004
+    title: Specify importer evidence and RBAC acceptance contracts
+    wave: W1
+    kind: specification
+    owner: luna-domain-designer
+    status: done
+    evidence: docs/execution/IMPORT_EVIDENCE_RBAC_SPEC.md
+    depends_on: [SPEC-001]
+    gates: []
+    write_scope: [docs/execution/IMPORT_EVIDENCE_RBAC_SPEC.md]
+    acceptance: [All 16 entities and null dates retained, No silent reference merge or source conflict resolution, Reliance revocation and dual control cases, Contractor cannot edit design or close comments]
+  - id: BUILD-001
+    title: Scaffold application and CI from reviewed technical contracts
+    wave: W2
+    kind: implementation
+    owner: luna-foundation
+    status: done
+    spec: docs/execution/BUILD_001_CONTRACT.md
+    evidence: docs/validation/BUILD_001_INTEGRATION_REPORT.md
+    acceptance_scope: local_scaffold_only_not_production_release
+    depends_on: [SPEC-002, SPEC-003, SPEC-004]
+    gates: [TECH_SPEC]
+    write_scope: [package.json, package-lock.json, tsconfig.json, next-env.d.ts, next.config.ts, eslint.config.mjs, vitest.config.ts, .gitignore, src/app, src/config, tests/unit/scaffold, tests/smoke/scaffold.test.mjs, .github/workflows/ci.yml, tests/test_ci_contract.py, docs/DEVELOPMENT.md, docs/validation/TDD_BUILD_001_REPORT.md, docs/validation/TDD_BUILD_001_CI_REPORT.md, docs/validation/BUILD_001_INTEGRATION_REPORT.md]
+    acceptance: [Scaffold task contract reviewed before dispatch, Build lint and baseline tests pass, No live credentials or external writes]
+  - id: BUILD-002
+    title: Implement persistence and atomic command engine with TDD
+    wave: W2
+    kind: implementation
+    owner: luna-command-engine
+    status: done
+    evidence: docs/validation/TDD_BUILD_002_REPORT.md
+    spec: docs/execution/BUILD_002_CONTRACT.md
+    depends_on: [BUILD-001]
+    gates: [TECH_SPEC]
+    write_scope: [src/db, src/domain/commands, tests/integration/commands, docs/validation/TDD_BUILD_002_REPORT.md]
+    lead_owned_shared_files: [src/contracts/foundation.ts, package.json, package-lock.json, tsconfig.json, vitest.integration.config.ts]
+    acceptance: [Real PostgreSQL rollback tests, Stale-version and duplicate-command tests, No state mutation outside guarded command path, Atomic ledger and outbox]
+  - id: BUILD-003
+    title: Implement authorization and scoped seven-role policy with TDD
+    wave: W2
+    kind: implementation
+    owner: luna-authorization
+    status: done
+    evidence: docs/validation/TDD_BUILD_003_REPORT.md
+    spec: docs/execution/BUILD_003_CONTRACT.md
+    depends_on: [BUILD-001]
+    gates: [TECH_SPEC]
+    write_scope: [src/auth, tests/integration/auth, docs/validation/TDD_BUILD_003_REPORT.md]
+    lead_owned_shared_files: [src/contracts/foundation.ts, package.json, package-lock.json, tsconfig.json, vitest.integration.config.ts]
+    acceptance: [Server-side allow-deny matrix, Self-validation denied, Contractor package isolation, Admin correction cannot bypass gates]
+  - id: BUILD-004
+    title: Implement evidence vault and reliance lifecycle with TDD
+    wave: W2
+    kind: implementation
+    owner: luna-evidence
+    status: done
+    evidence: docs/validation/TDD_BUILD_004_REPORT.md
+    spec: docs/execution/BUILD_004_CONTRACT.md
+    depends_on: [BUILD-002, BUILD-003]
+    gates: [TECH_SPEC]
+    write_scope: [src/domain/evidence, tests/integration/evidence, docs/validation/TDD_BUILD_004_REPORT.md]
+    acceptance: [Version hash and scan controls, Scope mismatch conflict expiry and revocation lock dependents, Independent validation required]
+  - id: DOMAIN-001
+    title: Implement masterplan and baseline change lanes with TDD
+    wave: W3
+    kind: implementation
+    owner: luna-baseline
+    status: done
+    evidence: docs/validation/W3_INTEGRATION_REPORT.md
+    depends_on: [BUILD-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/domain/masterplan, tests/integration/masterplan]
+    acceptance: [Missing Attachment 1 prevents freeze, No fabricated conditions, Baseline immutability and amendment locks]
+  - id: DOMAIN-002
+    title: Implement registration clearance and soil lanes with TDD
+    wave: W3
+    kind: implementation
+    owner: luna-meps
+    status: done
+    evidence: docs/validation/W3_INTEGRATION_REPORT.md
+    depends_on: [BUILD-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/domain/meps, tests/integration/meps]
+    acceptance: [Sixteen-entity fixture with conflicts, Pre-project linkage and exemption revocation, No soil release on unverified approval]
+  - id: DOMAIN-003
+    title: Implement workstreams package permits comments and bundles with TDD
+    wave: W3
+    kind: implementation
+    owner: luna-packages
+    status: done
+    evidence: docs/validation/W3_INTEGRATION_REPORT.md
+    depends_on: [DOMAIN-001, DOMAIN-002]
+    gates: [TECH_SPEC]
+    write_scope: [src/domain/packages, src/domain/comments, src/domain/bundles, tests/integration/packages]
+    acceptance: [Activated requirements only, Full permit gates never bypassed by preparatory fallback, Package revision isolation, Contractor issuing party distinct from recording actor]
+  - id: DOMAIN-004
+    title: Implement infrastructure third-party and risk lanes with TDD
+    wave: W3
+    kind: implementation
+    owner: luna-infrastructure
+    status: done
+    evidence: docs/validation/W3_INTEGRATION_REPORT.md
+    depends_on: [BUILD-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/domain/infrastructure, src/domain/third-party, src/domain/risks, tests/integration/infrastructure]
+    acceptance: [ENOC stage dependencies, Plan-review and inspection scope enforced, No activation from conditional no-objection alone, Unavailable-service escalation idempotent]
+  - id: INTEGRATE-001
+    title: Implement tracker and MEPS import reconciliation with TDD
+    wave: W4
+    kind: implementation
+    owner: luna-importer
+    status: done
+    evidence: docs/validation/RELEASE_001_REPORT.md
+    depends_on: [DOMAIN-002, DOMAIN-003, DOMAIN-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/imports, tests/integration/imports]
+    acceptance: [Dry-run diff and idempotent commit, Preserve raw rows refs null dates and conflicts, No write-back, Live reconciliation remains unproven until extract supplied]
+  - id: INTEGRATE-002
+    title: Implement fake-clock escalations deterministic KPIs and reports with TDD
+    wave: W4
+    kind: implementation
+    owner: luna-reporting
+    status: done
+    evidence: docs/validation/RELEASE_001_REPORT.md
+    depends_on: [DOMAIN-003, DOMAIN-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/jobs, src/reports, tests/integration/reporting]
+    acceptance: [Versioned calendar boundary cases, Dedupe all escalation rules, Unknown dates never zero duration, Immutable reproducible report snapshots]
+  - id: INTEGRATE-003
+    title: Implement DREX typed sidecar and offline safety evaluations with TDD
+    wave: W4
+    kind: implementation
+    owner: luna-drex
+    status: done
+    evidence: docs/validation/RELEASE_001_REPORT.md
+    depends_on: [BUILD-004, DOMAIN-003, DOMAIN-004]
+    gates: [TECH_SPEC]
+    write_scope: [src/ai/drex, tests/integration/drex]
+    acceptance: [Twelve typed decision contracts, No generated text or direct state writes, Timeout fallback and kill switches, Mocks do not claim model quality or promotion]
+  - id: UI-001
+    title: Specify and implement production UI against verified command contracts
+    wave: W4
+    kind: implementation
+    owner: lead-ui
+    status: done
+    evidence: docs/validation/RELEASE_001_REPORT.md
+    depends_on: [INTEGRATE-001, INTEGRATE-002]
+    gates: [TECH_SPEC]
+    write_scope: [src/app, src/components, tests/e2e]
+    acceptance: [Load applicable UI skills before dispatch, Reviewed src/app ownership handoff from BUILD-001 before edits, No hidden-control-only authorization, Failure reason traces and evidence provenance visible, Keyboard responsive and accessibility checks, DREX UI remains off until sidecar integrated]
+  - id: RELEASE-001
+    title: Run independent combined system security and journey verification
+    wave: W5
+    kind: verification
+    owner: lead-reviewer
+    status: done
+    evidence: docs/validation/RELEASE_001_REPORT.md
+    depends_on: [UI-001, INTEGRATE-003]
+    gates: [TECH_SPEC]
+    write_scope: [docs/validation/RELEASE_REPORT.md]
+    acceptance: [All machine and cross-machine runtime tests evidenced, Independent review distinct from implementation, Red release gate blocks promotion]
+  - id: RELEASE-002
+    title: Verify live evidence residency reconciliation and approved DREX shadow evaluation
+    wave: W5
+    kind: verification
+    owner: lead-with-client
+    status: queued
+    depends_on: [RELEASE-001]
+    gates: [LIVE_EVIDENCE, HOSTING_POLICY]
+    write_scope: [docs/validation/LIVE_ACCEPTANCE.md]
+    acceptance: [Live extract reconciliation proven, Human authority decisions recorded, DREX stays off unless processing and deployment approved, Required labelled quality evals before promotion]
+  - id: RELEASE-003
+    title: Production release and hypercare handoff
+    wave: W5
+    kind: release
+    owner: lead-with-client
+    status: queued
+    depends_on: [RELEASE-002]
+    gates: [RELEASE_SIGNOFF]
+    write_scope: [docs/validation/PRODUCTION_HANDOFF.md]
+    acceptance: [Client AOR and engineering signoff, Rollback and restore exercise, No unresolved release-relevant regulatory gate]
+
+# Traceability only: named test artifacts are planned, not proof they exist or pass.
+machine_ownership:
+  SM_1_masterplan:
+    task: DOMAIN-001
+    tests: [tests/integration/masterplan/masterplan.test.ts]
+  SM_1_condition:
+    task: DOMAIN-001
+    tests: [tests/integration/masterplan/condition.test.ts]
+  SM_2A_registration:
+    task: DOMAIN-002
+    tests: [tests/integration/meps/registration.test.ts]
+  SM_2B_entity:
+    task: DOMAIN-002
+    tests: [tests/integration/meps/clearance-entity.test.ts]
+  SM_2B_case:
+    task: DOMAIN-002
+    tests: [tests/integration/meps/clearance-case.test.ts]
+  SM_2C_soil_work:
+    task: DOMAIN-002
+    tests: [tests/integration/meps/soil-work.test.ts]
+  SM_2D_workstream:
+    task: DOMAIN-003
+    tests: [tests/integration/packages/workstream.test.ts]
+  SM_2D_soil_report:
+    task: DOMAIN-002
+    tests: [tests/integration/meps/soil-report.test.ts]
+  SM_2E_full_permit:
+    task: DOMAIN-003
+    tests: [tests/integration/packages/full-permit.test.ts]
+  SM_2F_appointments:
+    task: DOMAIN-003
+    tests: [tests/integration/packages/appointments.test.ts]
+  SM_3_infra_step:
+    task: DOMAIN-004
+    tests: [tests/integration/infrastructure/infra-step.test.ts]
+  SM_3_infra_program:
+    task: DOMAIN-004
+    tests: [tests/integration/infrastructure/infra-program.test.ts]
+  SM_4_third_party:
+    task: DOMAIN-004
+    tests: [tests/integration/infrastructure/third-party.test.ts]
+  SM_5_comment:
+    task: DOMAIN-003
+    tests: [tests/integration/packages/comment.test.ts]
+  SM_6_bundle:
+    task: DOMAIN-003
+    tests: [tests/integration/packages/bundle.test.ts]
+  SM_7_risk:
+    task: DOMAIN-004
+    tests: [tests/integration/infrastructure/risk.test.ts]
+  SM_8_escalation:
+    task: INTEGRATE-002
+    tests: [tests/integration/reporting/escalation.test.ts]
+  SM_9_report:
+    task: INTEGRATE-002
+    tests: [tests/integration/reporting/report.test.ts]
+  SM_10_document:
+    task: BUILD-004
+    tests: [tests/integration/evidence/document.test.ts]
+  SM_11_baseline_change:
+    task: DOMAIN-001
+    tests: [tests/integration/masterplan/baseline-change.test.ts]

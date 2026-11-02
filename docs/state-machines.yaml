@@ -1,0 +1,2462 @@
+# Al-Amerah Governance Dashboard — State Machine Contract
+# Version 1.2 — 2 November 2026 — W1 software-contract reconciliation
+# This file is the implementation contract. Code, tests and diagrams are generated from it.
+# Changing a state or transition requires a review and a new machine_version.
+
+version: "1.2"
+project: al-amerah-governance
+timezone: Asia/Dubai
+business_week: [Mon, Tue, Wed, Thu, Fri]
+clock_source: injected
+idempotency: required
+ledger: append_only
+machine_versioning: required
+
+# Global requirements apply in addition to every machine's local guards.
+# These are software safety semantics, not new regulatory approvals or conditions.
+behavioral_contract:
+  decision_record: docs/execution/SPEC_DECISIONS.md
+  enforcement: server_side_within_command_transaction
+  unknown_guard_result: deny
+  terminal_semantics: declared_success_or_stop_milestone_not_an_implicit_transition_ban
+  revalidation:
+    statuses: [CLEAR, REQUIRED]
+    default_on_dependency_change: REQUIRED
+    rewrite_authority_state: false
+    automatic_legal_revocation: false
+    guarded_actions: [release, submit, resubmit, record_stamp, record_issuance, activate_inspection, signoff, construction_start]
+    recording_historical_authority_fact: allowed_with_quarantined_reliance
+    dependency_changes: [expiry, revocation, suspension, scope_change, design_revision_change, requirement_change, evidence_supersession, exemption_revocation]
+    recovery: fresh_independent_verification_and_current_gate_evaluation
+    propagation: transactional_dependency_epoch_invalidation_then_idempotent_async_recompute
+    stale_snapshot: deny_even_if_machine_state_says_ready_or_approved
+  scope_binding:
+    applies_to: package_permit_gate_and_reliance_snapshots
+    required_fields: [project_id, package_id, plot_ids, scope_version, design_revision, requirement_snapshot_id, evidence_version_ids]
+    non_gate_intake_variants: [PROJECT_SCOPE, PROVISIONAL_PLOT_SCOPE]
+    provisional_scope_can_satisfy_package_gate: false
+    immutable_gate_snapshot: true
+    unknown_applicability_blocks: true
+    catalogue_track_activates_requirement: false
+    seed_status_is_executable_state: false
+    applicability_values: [REQUIRED, NOT_REQUIRED, UNKNOWN]
+    applicability_source: verified_versioned_per_package_requirement_snapshot
+    shared_evidence: explicit_verified_coverage_for_each_binding
+    step03_activation_does_not_waive_full_permit_prerequisites: true
+  evidence_validation:
+    regulated_uploader_must_differ_from_validator: true
+    recording_equals_validation: false
+    regulated_classes: [AUTHORITY_APPROVAL, NOC, STAMPED_TECHNICAL_DOCUMENT, LEGAL_AUTHORIZATION, EXEMPTION, WAIVER]
+    authority_validator_roles: [STAKEHOLDER_MANAGER]
+    structural_validator_roles: [THIRD_PARTY_INSPECTOR]
+    named_validator_assignment_and_scope_must_be_verified: true
+    technical_signer_may_be_uploader: true
+    structural_uploader_validator_overlap: requires_different_credentialed_assigned_inspector
+    stamp_requires_assigned_credentialed_signer: true
+    authorization_rechecked_at_commit: true
+    signer_is_distinct_from_recording_actor: true  # identities stored separately; not necessarily different people
+    dual_control: two_distinct_eligible_humans_bound_to_same_command_hash_and_versions
+    dual_control_role_pairs:
+      SM1-T04: [[STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]]
+      SM1-T07: [[CLIENT_EXECUTIVE, SYSTEM_ADMIN]]
+      SMC-T06: [[CLIENT_EXECUTIVE, SYSTEM_ADMIN]]
+      S2B-T10: [[CLIENT_EXECUTIVE, SYSTEM_ADMIN]]
+      S2B-T14: [[STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]]
+      S2BC-T14: [[STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE], [SYSTEM_ADMIN, CLIENT_EXECUTIVE]]
+      S2D-T09: [[STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]]
+      S3-T08: [[CLIENT_EXECUTIVE, SYSTEM_ADMIN]]
+      S7-T07: [[CLIENT_EXECUTIVE, CLIENT_EXECUTIVE]]  # distinct people; one role twice never means one person twice
+      S11-T06: [[SYSTEM_ADMIN, CLIENT_EXECUTIVE]]
+  third_party:
+    plan_review_required_state: INSPECTION_ACTIVE
+    inspection_required_state: INSPECTION_ACTIVE
+    licensing_approval_allows_technical_work: false
+    scope_and_assignment_required_for_each_technical_act: true
+    policy_status: conservative_software_lock_pending_any_evidenced_aor_amendment
+  correction:
+    storage: append_only_superseding_fact
+    direct_state_write: false
+    regulatory_gate_clearing: ordinary_independent_evidence_and_guard_rules_only
+    permitted_role: SYSTEM_ADMIN
+    requires: [reason, source_assertion_id, replacement_assertion, actor, timestamp, evidence_links]
+    regulated_correction_independent_approval: true
+  fallback:
+    execution_status: DISABLED_PENDING_SEPARATE_CONTRACT
+    counts_as_full_permit: false
+    adm_direction_required: true
+    full_permit_route: COORDINATED_ONLY
+    placeholder_guard_semantics: false_for_any_standalone_full_permit_command
+  events:
+    registry_reference: docs/execution/COMMAND_SCHEMA_SPEC.md
+    reviewed_registry_may_declare_conditional_emissions: true
+    required_fields: [event_id, event_type, schema_version, producer_type, producer_id, aggregate_id, aggregate_version, project_id, scope_binding, dependency_epoch, occurred_at, correlation_id, causation_id]
+    unlock_handler: recompute_from_current_committed_facts
+    dedupe_required: true
+    dedupe_key: handler_name_and_event_id
+    stale_event_cannot_unlock: true
+    external_authority_writeback: false
+    side_effect_aliases_are_recording_only: [submit_coordinated_transaction, notify_authorities, notify_authority, notify_authority_owner]
+    unspecified_producer: disabled_until_registered_with_schema_and_tests
+    drex_extraction_default: disabled_until_hosting_policy_approved
+
+project_identity:
+  project_name: National Housing and Communities in Al Amerah — Al-Amerah Phase 1
+  meps_project_ref: B2N-2026-002940
+  owner: Abu Dhabi Housing Authority
+  developer: IMKAN Properties
+  architect_of_record: TO_CONFIRM
+  aor_candidates: [Dorsch Gruppe, Engineering Consultants Group]
+  aor_entity_status: TO_CONFIRM
+  third_party: Qualiconsult International
+  first_permit_package: PACKAGE_I
+  site_clearance_active_ref: B2-SC-A-2026-001625
+  site_clearance_legacy_ref: B2-SC-A-2026-001525
+  site_clearance_reference_lineage_status: TO_CONFIRM  # active/legacy labels are provisional, not verified lineage
+  dmp_certificate: MPD-230126-0505
+  dmt_masterplan_ref: DMT/MD/OUT/2026/4886
+  dmt_third_party_ref: DMT/PAS/OUT/2026/8415
+  client_third_party_letter_ref: AMR-OUT-26-0124
+  form_22_ref: B2N-2026-002940
+  validity_from: 2026-06-04
+  validity_to: 2029-06-04
+
+sources:
+  - id: SRC-PRD
+    document: Product Requirement Document — Al-Amerah Stakeholder Permitting & Automated Governance Dashboard
+    role: product requirements
+  - id: SRC-STRATEGY
+    document: Al-Amerah Phase 1 — Integrated Building Permit & Local Authorities Approval Strategy
+    date: 2026-08-24
+    role: governing current-state strategy
+  - id: SRC-TRACKER
+    document: "20260831 - AOR Al Amerah - Submission Tracker Sheet"
+    tracker_header_date: 2026-07-19
+    file_date: 2026-08-31
+    role: authority entity matrix and document requirements; no dates populated
+  - id: SRC-PPTX
+    document: Abu Dhabi Permitting & Local Authorities Process 2026 (Dorsch)
+    role: process detail and general requirements
+  - id: SRC-DMT-LETTER
+    document: DMT/PAS/OUT/2026/8415 (Mersal 202600474922)
+    date: 2026-09-08
+    role: third-party appointment conditions
+  - id: SRC-FORM22
+    document: IMKAN Third Party Authorization Letter (Form 22)
+    date: 2026-09-08
+    role: signed client/third-party authorization
+  - id: SRC-CLIENT-LETTER
+    document: IMKAN letter AMR-OUT-26-0124
+    date: 2026-08-21
+    role: client delegation request referenced in DMT letter
+
+source_conflicts:
+  - id: SC-01
+    topic: AOR legal entity
+    sources: [SRC-PRD, SRC-TRACKER]
+    conflict: "PRD names Dorsch Gruppe; tracker header names Engineering Consultants Group (ECG)."
+    resolution: "Keep AOR role abstract; confirm legal entity and MEPS account owner in S0. Do not hard-code either name."
+  - id: SC-02
+    topic: Site clearance reference
+    sources: [SRC-PRD, SRC-TRACKER, SRC-STRATEGY]
+    conflict: "PRD/strategy use B2-SC-A-2026-001625; tracker uses B2-SC-A-2026-001525 for most entities and 001625 for five."
+    resolution: "Model an application family with active and legacy refs; never merge refs silently."
+  - id: SC-03
+    topic: Site clearance entity set
+    sources: [SRC-PRD, SRC-TRACKER]
+    conflict: "PRD names five entities; tracker lists sixteen."
+    resolution: "Import all sixteen; mark thirteen required and three not-required seeds; the five PRD entities are the current critical subset."
+  - id: SC-04
+    topic: TAQA Water status
+    sources: [SRC-STRATEGY, SRC-TRACKER]
+    conflict: "Strategy says APPROVED; tracker says comments/resubmission required for ENOC design, site plan and undertaking."
+    resolution: "Preserve strategy and tracker assertions; quarantine reliance until current authority evidence resolves the conflict. Neither source automatically wins."
+  - id: SC-05
+    topic: ADSSC status and acronym
+    sources: [SRC-PRD, SRC-TRACKER, SRC-STRATEGY]
+    conflict: "PRD/strategy spell ADSCC and say rejected/unavailable; tracker spells ADSSC and says comments/resubmission required with an undertaking letter."
+    resolution: "Use ADSSC as canonical; model unavailable-service comment as the blocking condition; do not assume a formal rejection letter exists."
+  - id: SC-06
+    topic: Permit scope and packages
+    sources: [SRC-TRACKER, SRC-PRD]
+    conflict: "Tracker has Preliminary Approvals and Package I; PRD describes one project-level Step 04."
+    resolution: "Make Step 04 package-scoped; Package I is the first package; building list and package scope must be confirmed."
+  - id: SC-07
+    topic: Contractor role
+    sources: [SRC-PPTX, SRC-PRD]
+    conflict: "PPTX says contractor issues the building permit after consultant appointments; PRD plan assigns issuance to AOR."
+    resolution: "Add CONTRACTOR role; contractor is the issuing party; AOR records and verifies."
+  - id: SC-08
+    topic: Step 03A/03B current requirement
+    sources: [SRC-STRATEGY, SRC-PRD]
+    conflict: "PRD describes a broad Step 03A/03B workstream list; strategy says only EAD is currently required and no separate 03B submission is planned."
+    resolution: "Keep the workstream family but add current-state mode; only EAD is active now; all others are monitor/conditional until MEPS activates them."
+  - id: SC-09
+    topic: ENOC dependency
+    sources: [SRC-TRACKER, SRC-PPTX]
+    conflict: "Tracker remarks require ENOC design/construction stage approval for TAQA super-plot; PRD does not mention ENOC."
+    resolution: "Add ENOC_INFRASTRUCTURE workstream with cross-links to TAQA Water and TAQA Electricity."
+  - id: SC-10
+    topic: LDN expansion
+    sources: [SRC-STRATEGY]
+    conflict: "Strategy says the precise expansion of LDN is to be confirmed; PRD uses Load Demand Notification."
+    resolution: "Use 'LDN electrical-distribution package' as working term; confirm expansion before external technical submission."
+
+data_gaps:
+  - id: DG-01
+    item: DMP Attachment 1 — full 24 conditions
+    owner: CLIENT
+    sprint: 0
+  - id: DG-02
+    item: Live MEPS requirement list extract and column mapping
+    owner: AOR
+    sprint: 0
+  - id: DG-03
+    item: Building list and Package I scope
+    owner: CLIENT
+    sprint: 0
+  - id: DG-04
+    item: AOR legal entity and MEPS account ownership
+    owner: CLIENT
+    sprint: 0
+  - id: DG-05
+    item: Authority SLA targets and escalation contacts
+    owner: CLIENT/AOR
+    sprint: 0
+  - id: DG-06
+    item: ENOC design/construction stage approval and owner
+    owner: AOR/AECOM
+    sprint: 0
+  - id: DG-07
+    item: Harmony Study requirement and scope
+    owner: AOR
+    sprint: 0
+  - id: DG-08
+    item: Signed Form 22 and DMT letter originals
+    owner: CLIENT
+    sprint: 0
+
+roles:
+  - SYSTEM_ADMIN
+  - STAKEHOLDER_MANAGER
+  - AOR_LEAD
+  - THIRD_PARTY_INSPECTOR
+  - CLIENT_EXECUTIVE
+  - DISCIPLINE_LEAD
+  - CONTRACTOR
+
+sla:
+  calendar: UAE
+  timezone: Asia/Dubai
+  is_commitment: false
+  disclaimer: >-
+    Internal tracking targets only. Authority review periods vary and no fixed
+    duration is guaranteed by DMT, AAM or any utility authority.
+  targets:
+    - {authority: ADM, days: 14, source: "PRD example (Rule 4)"}
+    - {authority: AAM_ROADS, days: 14, source: internal_default}
+    - {authority: TAQA_WATER, days: 14, source: internal_default}
+    - {authority: TAQA_ELECTRICITY, days: 14, source: internal_default}
+    - {authority: EAND_ETISALAT, days: 10, source: internal_default}
+    - {authority: ADSSC, days: 14, source: internal_default}
+    - {authority: EAD, days: 30, source: internal_default}
+    - {authority: ITC, days: 21, source: internal_default}
+    - {authority: ADCD, days: 14, source: internal_default}
+
+# ---------------------------------------------------------------------------
+# SM-1 — Masterplan compliance and baseline planning
+# ---------------------------------------------------------------------------
+machines:
+
+  SM_1_masterplan:
+    title: Masterplan compliance and baseline planning
+    aggregate: Masterplan
+    initial: CMP_APPROVED
+    terminal: [BASELINE_FREEZE]
+    config:
+      certificate_ref: MPD-230126-0505
+      dmt_correspondence_ref: DMT/MD/OUT/2026/4886
+      certificate_issued_on: 2026-06-04
+      valid_until: 2029-06-04
+      required_conditions: 24
+      allow_waivers_default: false
+    states:
+      CMP_APPROVED:
+        kind: initial
+        label: Concept master plan approved
+      DMP_SUBMITTED:
+        kind: active
+      DMP_CONDITIONALLY_APPROVED:
+        kind: active
+        starts_clock: true
+      DMP_AMENDMENT_REQUIRED:
+        kind: blocking_branch
+        blocks_downstream: true
+      BASELINE_FREEZE:
+        kind: success
+        immutable: true
+      VALIDITY_EXPIRED:
+        kind: terminal_alert
+        blocks_new_permits: true
+    transitions:
+      - id: SM1-T01
+        from: CMP_APPROVED
+        event: SUBMIT_DMP
+        to: DMP_SUBMITTED
+        guards: [submission_package_complete, dmt_receipt_captured]
+        effects: [notify_aor, notify_stakeholder, start_submission_sla]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: SM1-T02
+        from: DMP_SUBMITTED
+        event: RECEIVE_CONDITIONAL_APPROVAL
+        to: DMP_CONDITIONALLY_APPROVED
+        guards: [dmt_correspondence_matches_4886, conditions_parsed_count_24]
+        effects: [start_validity_tracker, create_24_condition_tasks, notify_all]
+        evidence: [dmt_correspondence]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: SM1-T03
+        from: DMP_SUBMITTED
+        event: RECEIVE_AMENDMENT_REQUEST
+        to: DMP_AMENDMENT_REQUIRED
+        guards: [dmt_letter_captured]
+        effects: [block_downstream_permits, notify_aor, notify_client]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: SM1-T04
+        from: DMP_CONDITIONALLY_APPROVED
+        event: FREEZE_BASELINE
+        to: BASELINE_FREEZE
+        guards:
+          - all_conditions_accepted
+          - no_open_amendment
+          - executive_approval_recorded
+          - evidence_complete_for_all_conditions
+        effects:
+          - create_immutable_baseline_version
+          - freeze_baseline_documents
+          - unlock_parcel_submissions
+          - notify_all
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+        dual_control: true
+      - id: SM1-T05
+        from: DMP_CONDITIONALLY_APPROVED
+        event: RAISE_AMENDMENT
+        to: DMP_AMENDMENT_REQUIRED
+        guards: [noc_conflict_evidence_present]
+        effects: [block_downstream_permits, notify_dmt_owner]
+        roles: [STAKEHOLDER_MANAGER, AOR_LEAD]
+      - id: SM1-T06
+        from: DMP_AMENDMENT_REQUIRED
+        event: RESUBMIT_AMENDMENT
+        to: DMP_SUBMITTED
+        guards: [amended_package_complete, impact_assessment_complete]
+        effects: [start_new_review_cycle, preserve_prior_version]
+        roles: [AOR_LEAD]
+      - id: SM1-T07
+        from: BASELINE_FREEZE
+        event: APPROVED_BASELINE_CHANGE
+        to: DMP_AMENDMENT_REQUIRED
+        guards: [baseline_change_status_applied, executive_approval_recorded]
+        effects: [version_bump, flag_affected_cases_for_revalidation, block_downstream]
+        roles: [CLIENT_EXECUTIVE, SYSTEM_ADMIN]
+        dual_control: true
+      - id: SM1-T08
+        from: DMP_CONDITIONALLY_APPROVED
+        event: CLOCK_EXPIRES
+        to: VALIDITY_EXPIRED
+        guards: [today_after_valid_until, no_renewal_recorded]
+        effects: [block_new_permits, executive_alert]
+        roles: [SYSTEM]
+      - id: SM1-T09
+        from: VALIDITY_EXPIRED
+        event: RENEW_VALIDITY
+        to: DMP_CONDITIONALLY_APPROVED
+        guards: [renewal_certificate_captured, new_validity_window_recorded]
+        effects: [update_validity_dates, audit_event]
+        evidence: [renewal_certificate]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+    invariants:
+      - required_condition_count_must_equal_24
+      - clock_starts_once_and_never_resets_except_renewal
+      - freeze_requires_zero_open_conditions_or_approved_waivers
+      - baseline_version_is_immutable_after_freeze
+      - amendment_blocks_all_step04_and_step05_submissions
+
+  SM_1_condition:
+    title: DMP condition item
+    aggregate: MasterplanCondition
+    initial: OPEN
+    terminal: [ACCEPTED, WAIVED]
+    states:
+      OPEN: {kind: active}
+      EVIDENCE_SUBMITTED: {kind: active}
+      UNDER_REVIEW: {kind: active}
+      ACCEPTED: {kind: success}
+      REJECTED: {kind: active}
+      WAIVED: {kind: success, requires_review_date: true}
+    transitions:
+      - id: SMC-T01
+        from: OPEN
+        event: SUBMIT_EVIDENCE
+        to: EVIDENCE_SUBMITTED
+        guards: [evidence_uploaded, evidence_type_matches_condition]
+        effects: [notify_reviewer]
+        roles: [DISCIPLINE_LEAD, AOR_LEAD]
+      - id: SMC-T02
+        from: EVIDENCE_SUBMITTED
+        event: START_REVIEW
+        to: UNDER_REVIEW
+        guards: [reviewer_assigned]
+        effects: [notify_owner]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: SMC-T03
+        from: UNDER_REVIEW
+        event: ACCEPT
+        to: ACCEPTED
+        guards: [acceptance_evidence_recorded]
+        effects: [recompute_masterplan_freeze_gate, notify_owner]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: SMC-T04
+        from: UNDER_REVIEW
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [notify_owner, create_action]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: SMC-T05
+        from: REJECTED
+        event: RESUBMIT
+        to: EVIDENCE_SUBMITTED
+        guards: [new_evidence_uploaded]
+        effects: [notify_reviewer]
+        roles: [DISCIPLINE_LEAD, AOR_LEAD]
+      - id: SMC-T06
+        from: [OPEN, EVIDENCE_SUBMITTED, UNDER_REVIEW, REJECTED]
+        event: WAIVE
+        to: WAIVED
+        guards: [authority_written_confirmation, executive_approval_recorded, review_date_recorded]
+        effects: [create_waiver_record, notify_all]
+        roles: [CLIENT_EXECUTIVE, SYSTEM_ADMIN]
+        dual_control: true
+      - id: SMC-T07
+        from: WAIVED
+        event: REOPEN
+        to: OPEN
+        guards: [executive_approval_recorded, reason_recorded]
+        effects: [recompute_masterplan_freeze_gate]
+        roles: [CLIENT_EXECUTIVE]
+    invariants:
+      - waiver_requires_authority_confirmation_and_review_date
+      - accepted_condition_requires_evidence
+
+# ---------------------------------------------------------------------------
+# SM-2 — MEPS 5-step family
+# ---------------------------------------------------------------------------
+
+  SM_2A_registration:
+    title: MEPS Step 01 project registration
+    aggregate: MepsRegistration
+    initial: NOT_STARTED
+    terminal: [APPROVED]
+    config:
+      dmt_approval_optional: true
+      requirement_list_source: MEPS_GENERATED
+    states:
+      NOT_STARTED: {kind: initial}
+      DRAFT: {kind: active}
+      SUBMITTED: {kind: active}
+      APPROVED: {kind: success}
+      RETURNED: {kind: active}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S2A-T01
+        from: NOT_STARTED
+        event: START
+        to: DRAFT
+        guards: [affection_plan_valid, client_appointment_letter_valid, plot_baseline_present, dmt_approval_recorded_or_not_applicable]
+        effects: [generate_mandatory_requirement_list, snapshot_meps_requirement_list]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2A-T02
+        from: DRAFT
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [meps_template_package_complete]
+        effects: [record_submission_receipt, notify_stakeholder]
+        roles: [AOR_LEAD]
+      - id: S2A-T03
+        from: SUBMITTED
+        event: APPROVE
+        to: APPROVED
+        guards: [approval_evidence_captured]
+        effects: [unlock_step02, notify_all]
+        evidence: [registration_approval]
+        roles: [AOR_LEAD]
+      - id: S2A-T04
+        from: SUBMITTED
+        event: RETURN
+        to: RETURNED
+        guards: [return_reason_captured]
+        effects: [create_action, notify_aor]
+        roles: [AOR_LEAD]
+      - id: S2A-T05
+        from: RETURNED
+        event: REVISE
+        to: DRAFT
+        guards: [corrections_recorded]
+        effects: [notify_aor]
+        roles: [AOR_LEAD]
+      - id: S2A-T06
+        from: [NOT_STARTED, DRAFT, SUBMITTED, RETURNED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+    invariants:
+      - step02_cannot_start_without_step01_approved
+
+  SM_2B_entity:
+    title: Site clearance authority entity
+    aggregate: AuthorityApplication
+    initial: NOT_STARTED
+    terminal: [APPROVED, WAIVED, NOT_REQUIRED, WITHDRAWN]
+    config:
+      # Full entity set from the AOR tracker. The five "critical" entities in the
+      # PRD are a subset, not the whole site-clearance scope.
+      entities:
+        - {id: ADNOC, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: TABREED, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: DU_TELECOM, refs: [B2-SC-A-2026-001525], seed_status: APPROVED_CONDITIONAL, critical: false, note: "Separate NOC required for master plan and ISP"}
+        - {id: EAND_ETISALAT, refs: [B2-SC-A-2026-001525], seed_status: COMMENTS_REQUIRED, critical: true}
+        - {id: ADSSC, alias: ADSCC, refs: [B2-SC-A-2026-001525, B2-SC-A-2026-001625], seed_status: COMMENTS_REQUIRED, critical: true}
+        - {id: ADMCC, alias: MCC, refs: [B2-SC-A-2026-001525], seed_status: APPROVED_CONDITIONAL, critical: false}
+        - {id: EAD, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: GHQ_MILITARY_TELECOM, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: ADPC_PORTS, refs: [B2-SC-A-2026-001525], seed_status: NOT_REQUIRED, critical: false}
+        - {id: ENEC, refs: [B2-SC-A-2026-001525], seed_status: NOT_REQUIRED, critical: false}
+        - {id: AAM_ROADS, refs: [B2-SC-A-2026-001525, B2-SC-A-2026-001625], seed_status: PENDING_DOCUMENTS, critical: true}
+        - {id: ADAC_AIR_NAVIGATION, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: ZONES_CORP, refs: [B2-SC-A-2026-001525], seed_status: NOT_REQUIRED, critical: false}
+        - {id: DCT, refs: [B2-SC-A-2026-001525], seed_status: APPROVED, critical: false}
+        - {id: TAQA_WATER, refs: [B2-SC-A-2026-001525, B2-SC-A-2026-001625], seed_status: CONFLICT_APPROVED_VS_COMMENTS, critical: true, note: "Strategy says APPROVED; tracker says comments required — reconcile in S0"}
+        - {id: TAQA_ELECTRICITY, refs: [B2-SC-A-2026-001525, B2-SC-A-2026-001625], seed_status: COMMENTS_REQUIRED, critical: true}
+      required_entities:
+        - ADNOC
+        - TABREED
+        - DU_TELECOM
+        - EAND_ETISALAT
+        - ADSSC
+        - ADMCC
+        - EAD
+        - GHQ_MILITARY_TELECOM
+        - AAM_ROADS
+        - ADAC_AIR_NAVIGATION
+        - DCT
+        - TAQA_WATER
+        - TAQA_ELECTRICITY
+      not_required_seed: [ADPC_PORTS, ENEC, ZONES_CORP]
+      critical_entities: [TAQA_WATER, TAQA_ELECTRICITY, AAM_ROADS, EAND_ETISALAT, ADSSC]
+      reliance_check:
+        required: true
+        checks: [validity, plot_scope, design_consistency, issuing_authority_matches]
+        statuses: [PENDING, VERIFIED, SCOPE_MISMATCH, EXPIRED]
+    states:
+      NOT_STARTED: {kind: initial}
+      PREPARING: {kind: active}
+      SUBMITTED: {kind: active}
+      UNDER_REVIEW: {kind: active}
+      PENDING_DOCUMENTS: {kind: blocked_on_applicant}
+      MODIFICATION_REQUIRED: {kind: blocked_on_applicant}
+      REJECTED_INFRASTRUCTURE_UNAVAILABLE: {kind: blocking}
+      APPROVED: {kind: success}
+      WAIVED: {kind: success, requires_review_date: true}
+      NOT_REQUIRED: {kind: success, requires_justification: true}
+      EXPIRED: {kind: active}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S2B-T01
+        from: NOT_STARTED
+        event: START
+        to: PREPARING
+        guards: [owner_assigned, requirement_list_generated]
+        effects: [create_evidence_checklist]
+        roles: [AOR_LEAD, DISCIPLINE_LEAD, CONTRACTOR]
+      - id: S2B-T02
+        from: PREPARING
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [required_documents_present, signed_undertaking_present_if_required]
+        effects: [record_submission_receipt, start_review_sla]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2B-T03
+        from: SUBMITTED
+        event: ACKNOWLEDGE
+        to: UNDER_REVIEW
+        guards: [authority_receipt_captured]
+        effects: [start_authority_sla]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2B-T04
+        from: UNDER_REVIEW
+        event: APPROVE
+        to: APPROVED
+        guards: [valid_noc_evidence, evidence_not_expired]
+        effects: [recompute_site_clearance_case, notify_all]
+        evidence: [noc_or_approval]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2B-T05
+        from: UNDER_REVIEW
+        event: REQUEST_DOCUMENTS
+        to: PENDING_DOCUMENTS
+        guards: [authority_request_captured]
+        effects: [create_action_for_missing_documents, notify_owner]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2B-T06
+        from: PENDING_DOCUMENTS
+        event: PROVIDE_DOCUMENTS
+        to: SUBMITTED
+        guards: [all_requested_documents_uploaded, documents_validated]
+        effects: [notify_authority_owner]
+        roles: [AOR_LEAD, DISCIPLINE_LEAD, CONTRACTOR]
+      - id: S2B-T07
+        from: UNDER_REVIEW
+        event: RECEIVE_COMMENTS
+        to: MODIFICATION_REQUIRED
+        guards: [comment_letter_captured, comments_linked]
+        effects: [create_comment_register_entries, start_modification_clock]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2B-T08
+        from: MODIFICATION_REQUIRED
+        event: RESUBMIT
+        to: SUBMITTED
+        guards: [revised_drawings_uploaded, response_bundle_complete]
+        effects: [record_resubmission, notify_authority_owner]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2B-T09
+        from: [UNDER_REVIEW, MODIFICATION_REQUIRED]
+        event: REJECT_UNAVAILABLE
+        to: REJECTED_INFRASTRUCTURE_UNAVAILABLE
+        guards: [authority_letter_confirms_unavailable_service]
+        effects: [create_high_risk, trigger_escalation_rule_2, notify_client_executive]
+        evidence: [authority_rejection_letter]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2B-T10
+        from: [NOT_STARTED, PREPARING, SUBMITTED, UNDER_REVIEW, PENDING_DOCUMENTS, MODIFICATION_REQUIRED, REJECTED_INFRASTRUCTURE_UNAVAILABLE, EXPIRED]
+        event: WAIVE
+        to: WAIVED
+        guards: [authority_written_confirmation, executive_approval_recorded, review_date_recorded]
+        effects: [create_waiver_record, recompute_site_clearance_case]
+        roles: [CLIENT_EXECUTIVE, SYSTEM_ADMIN]
+        dual_control: true
+      - id: S2B-T11
+        from: APPROVED
+        event: EXPIRE_EVIDENCE
+        to: EXPIRED
+        guards: [evidence_expiry_passed]
+        effects: [recompute_site_clearance_case, notify_owner, create_action]
+        roles: [SYSTEM]
+      - id: S2B-T12
+        from: EXPIRED
+        event: RENEW
+        to: SUBMITTED
+        guards: [renewed_evidence_uploaded]
+        effects: [restart_review_sla]
+        roles: [AOR_LEAD]
+      - id: S2B-T13
+        from: [NOT_STARTED, PREPARING, SUBMITTED, UNDER_REVIEW, PENDING_DOCUMENTS, MODIFICATION_REQUIRED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S2B-T14
+        from: [NOT_STARTED, PREPARING]
+        event: MARK_NOT_REQUIRED
+        to: NOT_REQUIRED
+        guards: [authority_confirms_not_applicable, justification_recorded, validator_approval_recorded]
+        effects: [recompute_site_clearance_case, audit_event]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+        dual_control: true
+    invariants:
+      - approved_requires_valid_unexpired_evidence
+      - unavailable_infrastructure_cannot_be_marked_approved
+      - rejected_infrastructure_unavailable_creates_high_risk
+      - not_required_requires_authority_confirmation_and_justification
+      - approved_evidence_must_pass_reliance_check_before_downstream_use
+
+  SM_2B_case:
+    title: Site clearance case (derived aggregate)
+    aggregate: SiteClearanceCase
+    initial: NOT_STARTED
+    terminal: [WITHDRAWN, REJECTED]
+    config:
+      active_ref: B2-SC-A-2026-001625
+      legacy_ref: B2-SC-A-2026-001525
+      pre_project_allowed: true
+      government_exemption_allowed: true
+    states:
+      NOT_STARTED: {kind: initial}
+      PRE_PROJECT: {kind: active}
+      PREPARING: {kind: active}
+      SUBMITTED: {kind: active}
+      UNDER_REVIEW: {kind: active}
+      PARTIALLY_APPROVED: {kind: active}
+      PENDING_MODIFICATION: {kind: blocked_on_applicant}
+      ALL_ENTITIES_APPROVED: {kind: success}
+      EXEMPT_GOVERNMENT_PROJECT: {kind: success, requires_review_date: true}
+      REOPENED: {kind: active}
+      REJECTED: {kind: terminal_alert}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S2BC-T01
+        from: NOT_STARTED
+        event: START
+        to: PREPARING
+        guards: [step01_approved_or_project_linked, all_required_entities_initialized]
+        effects: [create_entity_cases]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2BC-T02
+        from: NOT_STARTED
+        event: START_PRE_PROJECT
+        to: PRE_PROJECT
+        guards: [site_clearance_pre_project_allowed, plot_identified, initiator_is_consultant_or_contractor]
+        effects: [create_pre_project_case, create_entity_cases, notify_aor]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2BC-T03
+        from: PRE_PROJECT
+        event: LINK_PROJECT
+        to: PREPARING
+        guards: [meps_project_registered, project_link_recorded]
+        effects: [link_to_meps_project, notify_all]
+        roles: [AOR_LEAD]
+      - id: S2BC-T04
+        from: PREPARING
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [at_least_one_entity_submitted]
+        effects: [notify_authorities]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2BC-T05
+        from: SUBMITTED
+        event: ACKNOWLEDGE
+        to: UNDER_REVIEW
+        guards: [authority_receipts_captured]
+        effects: [start_case_sla]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2BC-T06
+        from: UNDER_REVIEW
+        event: PARTIAL_APPROVAL
+        to: PARTIALLY_APPROVED
+        guards: [at_least_one_entity_approved, not_all_entities_approved]
+        effects: [update_closure_index, notify_stakeholder]
+        roles: [SYSTEM]
+      - id: S2BC-T07
+        from: [UNDER_REVIEW, PARTIALLY_APPROVED, PENDING_MODIFICATION]
+        event: ALL_APPROVED
+        to: ALL_ENTITIES_APPROVED
+        guards:
+          - all_required_entities_approved_waived_or_not_required
+          - all_approved_entities_reliance_verified
+          - no_unwaived_unavailable_infrastructure
+        effects: [unlock_step02b, unlock_step04_precheck, emit_site_clearance_all_approved]
+        roles: [SYSTEM]
+      - id: S2BC-T08
+        from: [UNDER_REVIEW, PARTIALLY_APPROVED]
+        event: RECEIVE_MODIFICATIONS
+        to: PENDING_MODIFICATION
+        guards: [any_required_entity_in_modification_or_pending_documents]
+        effects: [update_case_status, start_modification_clock, notify_stakeholder]
+        roles: [SYSTEM]
+      - id: S2BC-T09
+        from: PENDING_MODIFICATION
+        event: RESUME_REVIEW
+        to: UNDER_REVIEW
+        guards: [all_required_entities_resubmitted]
+        effects: [restart_case_sla]
+        roles: [SYSTEM]
+      - id: S2BC-T10
+        from: PENDING_MODIFICATION
+        event: PARTIAL_APPROVAL
+        to: PARTIALLY_APPROVED
+        guards: [at_least_one_entity_approved, not_all_entities_approved]
+        effects: [update_closure_index]
+        roles: [SYSTEM]
+      - id: S2BC-T11
+        from: ALL_ENTITIES_APPROVED
+        event: REOPEN
+        to: REOPENED
+        guards: [entity_expired_or_revoked, reason_recorded]
+        effects: [lock_step02b, lock_step04, notify_all]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2BC-T12
+        from: REOPENED
+        event: RESUME
+        to: UNDER_REVIEW
+        guards: [replacement_entity_submitted]
+        effects: [restart_case_sla]
+        roles: [AOR_LEAD]
+      - id: S2BC-T13
+        from: [UNDER_REVIEW, PARTIALLY_APPROVED, PENDING_MODIFICATION]
+        event: REJECT_CASE
+        to: REJECTED
+        guards: [all_entities_rejected_or_unavailable, executive_notification_recorded]
+        effects: [lock_step02b, lock_step04, create_high_risk, notify_all]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S2BC-T14
+        from: [NOT_STARTED, PRE_PROJECT, PREPARING]
+        event: GRANT_GOVERNMENT_EXEMPTION
+        to: EXEMPT_GOVERNMENT_PROJECT
+        guards:
+          - government_owned_project_confirmed
+          - dmt_masterplan_approval_evidence
+          - adm_meps_exemption_confirmation
+          - executive_approval_recorded
+          - review_date_recorded
+          - reason_recorded
+        effects: [record_exemption, unlock_step02b, unlock_step04_precheck, notify_all]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE, SYSTEM_ADMIN]
+        dual_control: true
+      - id: S2BC-T15
+        from: EXEMPT_GOVERNMENT_PROJECT
+        event: REVOKE_EXEMPTION
+        to: REOPENED
+        guards: [exemption_no_longer_valid, reason_recorded]
+        effects: [lock_step02b, lock_step04, notify_all, create_action]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S2BC-T16
+        from: [NOT_STARTED, PRE_PROJECT, PREPARING, SUBMITTED, UNDER_REVIEW, PARTIALLY_APPROVED, PENDING_MODIFICATION, REOPENED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+    derived:
+      closure_index: approved_or_waived_or_not_required_required_entities / required_entities * 100
+      all_approved: all(entity.state in [APPROVED, WAIVED, NOT_REQUIRED]) and all(approved.reliance_status == VERIFIED)
+      blocking_entities: entities in [REJECTED_INFRASTRUCTURE_UNAVAILABLE, MODIFICATION_REQUIRED, PENDING_DOCUMENTS]
+      exemption_active: state == EXEMPT_GOVERNMENT_PROJECT
+    invariants:
+      - exemption_requires_government_ownership_dmt_approval_and_adm_confirmation
+      - reliance_check_required_before_downstream_use
+      - pre_project_case_must_link_before_step04
+      - approved_entity_without_reliance_check_does_not_unlock_dependents
+
+  SM_2C_soil_work:
+    title: MEPS Step 02B soil work permit
+    aggregate: SoilWorkPermit
+    initial: LOCKED
+    terminal: [APPROVED, WITHDRAWN]
+    states:
+      LOCKED: {kind: locked}
+      ELIGIBLE: {kind: active}
+      SUBMITTED: {kind: active}
+      APPROVED: {kind: success}
+      REJECTED: {kind: active}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S2C-T01
+        from: LOCKED
+        event: UNLOCK
+        to: ELIGIBLE
+        guards: [site_clearance_all_approved_or_government_exempt]
+        effects: [enable_submission_button, notify_aor]
+        roles: [SYSTEM]
+      - id: S2C-T02
+        from: ELIGIBLE
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [soil_work_package_complete]
+        effects: [record_submission_receipt]
+        roles: [AOR_LEAD]
+      - id: S2C-T03
+        from: SUBMITTED
+        event: APPROVE
+        to: APPROVED
+        guards: [approval_evidence_captured]
+        effects: [unlock_soil_work_on_site, notify_all]
+        evidence: [soil_work_permit]
+        roles: [AOR_LEAD]
+      - id: S2C-T04
+        from: SUBMITTED
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_action]
+        roles: [AOR_LEAD]
+      - id: S2C-T05
+        from: REJECTED
+        event: RESUBMIT
+        to: ELIGIBLE
+        guards: [corrections_recorded]
+        effects: [notify_aor]
+        roles: [AOR_LEAD]
+      - id: S2C-T06
+        from: [ELIGIBLE, REJECTED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+    invariants:
+      - locked_until_site_clearance_all_approved_or_government_exempt
+
+  SM_2D_workstream:
+    title: MEPS Step 03 preparatory workstream
+    aggregate: PreparatoryWorkstream
+    initial: NOT_AVAILABLE
+    config:
+      # seed_status is a data seed for the current project, not a machine state.
+      tracks: [MANDATORY, PREPARATORY]
+      current_requirement_source: MEPS_GENERATED_LIST
+      step03a_current_requirements: [EAD]
+      step03b_separate_submission_planned: false
+      items:
+        - {id: EAD, track: MANDATORY, seed_status: OBTAINED}
+        - {id: GIS_DCR, track: MANDATORY, seed_status: OBTAINED}
+        - {id: SOIL_REPORT, track: MANDATORY, seed_status: IN_PROGRESS, child_machine: SM_2D_soil_report}
+        - {id: ESTIDAMA_PCRS, track: MANDATORY, seed_status: IN_PROGRESS}
+        - {id: ITC, track: PREPARATORY, seed_status: NOT_AVAILABLE}
+        - {id: TAQA_LDN, track: PREPARATORY, seed_status: NOT_AVAILABLE, note: "LDN expansion to be confirmed; use LDN electrical-distribution package as working term"}
+        - {id: EAND_ETISALAT, track: PREPARATORY, seed_status: NOT_AVAILABLE}
+        - {id: DU_TELECOM, track: PREPARATORY, seed_status: NOT_REQUIRED_YET}
+        - {id: ADMCC, track: PREPARATORY, seed_status: NOT_REQUIRED_YET}
+        - {id: TABREED, track: PREPARATORY, seed_status: NOT_REQUIRED_YET}
+        - {id: ADM_MECHANICAL, track: PREPARATORY, seed_status: NOT_REQUIRED_YET}
+        - {id: ADM_PLUMBING, track: PREPARATORY, seed_status: NOT_REQUIRED_YET}
+        - {id: ENOC_INFRASTRUCTURE, track: MANDATORY, seed_status: PENDING_DESIGN, cross_links: [TAQA_WATER, TAQA_ELECTRICITY], owner: AECOM}
+        - {id: HARMONY_STUDY, track: PREPARATORY, seed_status: NOT_SUBMITTED, package: PACKAGE_I}
+        - {id: STRUCTURAL_THIRD_PARTY_REVIEW, track: PREPARATORY, seed_status: PENDING_APPOINTMENT, cross_link: SM_4_third_party}
+        - {id: ADCD_FIRE_LIFE_SAFETY, track: MANDATORY, seed_status: NOT_REQUIRED_YET, conditional: true}
+      alignment_required: [GIS_DCR]
+      conditional_items: [ADCD_FIRE_LIFE_SAFETY]
+      cross_links:
+        - {from: ENOC_INFRASTRUCTURE, to: [TAQA_WATER, TAQA_ELECTRICITY], reason: "TAQA super-plot approval requires ENOC design/construction stage approval"}
+        - {from: STRUCTURAL_THIRD_PARTY_REVIEW, to: [SM_4_third_party], reason: "Plan review requires active third-party authorization"}
+        - {from: HARMONY_STUDY, to: [PACKAGE_I], reason: "Listed as Package I building-permit requirement"}
+    states:
+      NOT_AVAILABLE: {kind: initial}
+      IN_PROGRESS: {kind: active}
+      SUBMITTED: {kind: active}
+      OBTAINED: {kind: success}
+      ALIGNED: {kind: success}
+      REJECTED: {kind: active}
+      NOT_REQUIRED_YET: {kind: conditional}
+      NOT_REQUIRED: {kind: waived}
+    transitions:
+      - id: S2D-T01
+        from: NOT_AVAILABLE
+        event: START
+        to: IN_PROGRESS
+        guards: [owner_assigned]
+        effects: [notify_owner]
+        roles: [DISCIPLINE_LEAD, AOR_LEAD]
+      - id: S2D-T02
+        from: IN_PROGRESS
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [workstream_package_complete]
+        effects: [record_submission]
+        roles: [AOR_LEAD]
+      - id: S2D-T03
+        from: SUBMITTED
+        event: RECEIVE
+        to: OBTAINED
+        guards: [valid_evidence_captured]
+        effects: [recompute_step04_gate, notify_all]
+        evidence: [authority_output]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2D-T04
+        from: OBTAINED
+        event: ALIGN
+        to: ALIGNED
+        guards: [alignment_required_for_item, gis_alignment_validated]
+        effects: [recompute_step04_gate]
+        roles: [AOR_LEAD]
+      - id: S2D-T05
+        from: IN_PROGRESS
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_action]
+        roles: [AOR_LEAD]
+      - id: S2D-T06
+        from: REJECTED
+        event: RESTART
+        to: IN_PROGRESS
+        guards: [corrections_recorded]
+        effects: [notify_owner]
+        roles: [DISCIPLINE_LEAD]
+      - id: S2D-T07
+        from: NOT_AVAILABLE
+        event: MARK_NOT_YET
+        to: NOT_REQUIRED_YET
+        guards: [item_is_conditional]
+        effects: [create_trigger_watch]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S2D-T08
+        from: NOT_REQUIRED_YET
+        event: TRIGGER_REQUIRED
+        to: NOT_AVAILABLE
+        guards: [trigger_condition_met]
+        effects: [notify_owner]
+        roles: [SYSTEM]
+      - id: S2D-T09
+        from: [NOT_AVAILABLE, IN_PROGRESS, REJECTED]
+        event: MARK_NOT_REQUIRED
+        to: NOT_REQUIRED
+        guards: [justification_recorded, validator_approval_recorded]
+        effects: [recompute_step04_gate, audit_event]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+        dual_control: true
+    invariants:
+      - not_required_requires_justification_and_validator_approval
+      - adcd_is_conditional_until_triggered
+      - meps_generated_requirement_list_is_authoritative
+      - enoc_required_for_taqa_super_plot
+      - step03a_only_ead_currently
+      - step03b_no_separate_submission_unless_activated
+
+  SM_2D_soil_report:
+    title: Soil report — construction phase 1
+    aggregate: SoilReport
+    initial: NOT_STARTED
+    terminal: [ACCEPTED]
+    states:
+      NOT_STARTED: {kind: initial}
+      IN_PROGRESS: {kind: active}
+      PENDING_THIRD_PARTY_STAMP: {kind: blocked_on_third_party}
+      STAMPED_BY_THIRD_PARTY: {kind: success}
+      SUBMITTED: {kind: active}
+      ACCEPTED: {kind: success}
+      REJECTED: {kind: active}
+    transitions:
+      - id: S2DS-T01
+        from: NOT_STARTED
+        event: START
+        to: IN_PROGRESS
+        guards: [geotechnical_scope_defined]
+        effects: [notify_owner]
+        roles: [DISCIPLINE_LEAD]
+      - id: S2DS-T02
+        from: IN_PROGRESS
+        event: SUBMIT_FOR_STAMP
+        to: PENDING_THIRD_PARTY_STAMP
+        guards: [draft_report_complete]
+        effects: [request_third_party_review, trigger_escalation_rule_3_if_step04_ready]
+        roles: [DISCIPLINE_LEAD]
+      - id: S2DS-T03
+        from: PENDING_THIRD_PARTY_STAMP
+        event: RECORD_STAMP
+        to: STAMPED_BY_THIRD_PARTY
+        guards: [third_party_authorization_active, authorized_scope_covers_structural_inspection, stamped_report_uploaded, stamp_valid, signer_assigned_and_credentialed, independent_structural_validation_recorded, authorization_version_current_at_commit]
+        effects: [recompute_step04_gate, notify_aor, notify_stakeholder]
+        evidence: [stamped_soil_report]
+        roles: [THIRD_PARTY_INSPECTOR, AOR_LEAD]
+      - id: S2DS-T04
+        from: STAMPED_BY_THIRD_PARTY
+        event: SUBMIT_TO_AUTHORITY
+        to: SUBMITTED
+        guards: [submission_receipt_captured]
+        effects: [start_authority_sla]
+        roles: [AOR_LEAD]
+      - id: S2DS-T05
+        from: SUBMITTED
+        event: ACCEPT
+        to: ACCEPTED
+        guards: [acceptance_evidence_captured]
+        effects: [recompute_step04_gate, close_action]
+        roles: [AOR_LEAD]
+      - id: S2DS-T06
+        from: [IN_PROGRESS, PENDING_THIRD_PARTY_STAMP, SUBMITTED]
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_action]
+        roles: [THIRD_PARTY_INSPECTOR, AOR_LEAD]
+      - id: S2DS-T07
+        from: REJECTED
+        event: RESTART
+        to: IN_PROGRESS
+        guards: [corrections_recorded]
+        effects: [notify_owner]
+        roles: [DISCIPLINE_LEAD]
+    invariants:
+      - stamp_only_when_third_party_inspection_active
+      - step04_requires_stamped_by_third_party
+
+  SM_2E_full_permit:
+    title: MEPS Step 04 coordinated full building permit
+    aggregate: FullPermit
+    initial: LOCKED
+    terminal: [APPROVED, WITHDRAWN]
+    config:
+      package_id: PACKAGE_I
+      package_scoped: true
+      packages: [ARCHITECTURE, STRUCTURE, LDN_ELECTRICAL]
+      supporting_approvals: [EAD, GIS, DCR, ITC, TAQA_LDN, ESTIDAMA_PCRS, EAND_ETISALAT, HARMONY_STUDY]
+      conditional_approvals: [ADCD_FIRE_LIFE_SAFETY]
+      readiness_gate_version: "1.1"
+      supporting_approval_catalogue_is_not_activation: true
+      applicability_snapshot_required: true
+      submission_route_allowed: [COORDINATED]
+      ldn_term_confirmation_required: true
+      fallback_requires_adm_direction: true
+      gate_checks:
+        - site_clearance
+        - soil_stamp
+        - architecture_package
+        - structure_package
+        - ldn_package
+        - supporting_approvals
+        - harmony_study_if_required
+        - readiness_workshop
+        - critical_comments
+        - third_party_plan_review
+        - reliance_verified
+        - package_scope_confirmed
+        - masterplan_no_amendment
+    states:
+      LOCKED: {kind: locked}
+      READY_FOR_SUBMISSION: {kind: active}
+      SUBMITTED: {kind: active}
+      UNDER_REVIEW: {kind: active}
+      MODIFICATION_REQUIRED: {kind: blocked_on_applicant}
+      RESUBMITTED: {kind: active}
+      APPROVED: {kind: success}
+      REJECTED: {kind: active}
+      EXPIRED: {kind: active}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S2E-T01
+        from: LOCKED
+        event: RELEASE_GATE
+        to: READY_FOR_SUBMISSION
+        guards:
+          - site_clearance_all_approved_or_government_exempt
+          - soil_report_stamped
+          - readiness_gate_closed
+          - packages_complete
+          - package_scope_confirmed
+          - supporting_approvals_valid_or_not_required
+          - enoc_stage_approval_supports_taqa_super_plot_if_applicable
+          - all_approved_evidence_reliance_verified
+          - third_party_plan_review_active_if_required
+          - structural_plan_review_evidence_verified_if_required
+          - masterplan_not_in_amendment
+          - fallback_adm_direction_if_standalone
+        effects: [enable_submission_button, record_gate_evaluation, notify_aor]
+        roles: [SYSTEM, STAKEHOLDER_MANAGER]
+      - id: S2E-T02
+        from: READY_FOR_SUBMISSION
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [bundle_validated, bundle_hash_recorded, authorized_signatory, package_matches_approved_scope]
+        effects: [submit_coordinated_transaction, record_receipt, start_review_sla]
+        roles: [AOR_LEAD]
+      - id: S2E-T03
+        from: SUBMITTED
+        event: ACKNOWLEDGE
+        to: UNDER_REVIEW
+        guards: [authority_receipt_captured]
+        effects: [start_authority_sla]
+        roles: [AOR_LEAD]
+      - id: S2E-T04
+        from: UNDER_REVIEW
+        event: APPROVE
+        to: APPROVED
+        guards: [approval_evidence_captured]
+        effects: [unlock_step05, notify_all]
+        evidence: [building_permit_approval]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2E-T05
+        from: UNDER_REVIEW
+        event: RECEIVE_COMMENTS
+        to: MODIFICATION_REQUIRED
+        guards: [comment_letter_captured]
+        effects: [create_comments, start_modification_clock]
+        roles: [AOR_LEAD]
+      - id: S2E-T06
+        from: MODIFICATION_REQUIRED
+        event: RESUBMIT
+        to: RESUBMITTED
+        guards: [all_comments_resolved, new_bundle_hash_recorded]
+        effects: [notify_authority_owner]
+        roles: [AOR_LEAD]
+      - id: S2E-T07
+        from: RESUBMITTED
+        event: ACKNOWLEDGE
+        to: UNDER_REVIEW
+        guards: [authority_receipt_captured]
+        effects: [restart_authority_sla]
+        roles: [AOR_LEAD]
+      - id: S2E-T08
+        from: UNDER_REVIEW
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_high_risk, notify_executive]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2E-T09
+        from: APPROVED
+        event: EXPIRE_PERMIT
+        to: EXPIRED
+        guards: [permit_expiry_passed]
+        effects: [notify_all, create_action]
+        roles: [SYSTEM]
+      - id: S2E-T10
+        from: [READY_FOR_SUBMISSION, SUBMITTED, UNDER_REVIEW, MODIFICATION_REQUIRED, REJECTED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER, AOR_LEAD]
+    invariants:
+      - no_step04_release_without_site_clearance_and_stamped_soil
+      - no_step04_release_while_masterplan_amendment_open
+      - standalone_fallback_requires_adm_direction_not_only_executive_acknowledgment
+      - step04_is_package_scoped_and_scope_must_be_confirmed
+      - approved_evidence_reliance_check_required_before_step04
+      - ldn_expansion_confirmed_before_external_submission
+
+  SM_2F_appointments:
+    title: MEPS Step 05 appointments and permit issuance
+    aggregate: PermitAppointment
+    initial: BLOCKED
+    terminal: [BUILDING_PERMIT_ISSUED]
+    states:
+      BLOCKED: {kind: locked, display_alias: DEPENDENT_ON_STEP_04}
+      READY: {kind: active}
+      SUBMITTED: {kind: active}
+      APPROVED: {kind: success}
+      BUILDING_PERMIT_ISSUED: {kind: success}
+      REJECTED: {kind: active}
+    transitions:
+      - id: S2F-T01
+        from: BLOCKED
+        event: PREPARE
+        to: READY
+        guards:
+          - step04_approved
+          - contractor_trade_license_valid
+          - supervision_consultant_license_valid
+          - construction_contract_signed_with_cost_and_duration
+          - contractor_assigned_in_meps
+        effects: [enable_appointment_form]
+        roles: [AOR_LEAD, CONTRACTOR]
+      - id: S2F-T02
+        from: READY
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [appointment_package_complete]
+        effects: [record_submission_receipt]
+        roles: [AOR_LEAD]
+      - id: S2F-T03
+        from: SUBMITTED
+        event: APPROVE
+        to: APPROVED
+        guards: [appointment_approval_captured]
+        effects: [enable_permit_issuance]
+        roles: [AOR_LEAD]
+      - id: S2F-T04
+        from: APPROVED
+        event: ISSUE_PERMIT
+        to: BUILDING_PERMIT_ISSUED
+        guards: [permit_number_recorded, permit_document_uploaded, contractor_is_issuing_party]
+        effects: [record_contractor_issuance, unlock_construction_start, notify_all]
+        evidence: [building_permit]
+        roles: [CONTRACTOR, AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S2F-T05
+        from: SUBMITTED
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_action]
+        roles: [AOR_LEAD]
+    invariants:
+      - no_issuance_without_step04_approved
+      - contractor_issues_permit_after_consultant_appointment
+      - contractor_cannot_edit_design_or_close_comments
+
+# ---------------------------------------------------------------------------
+# SM-3 — Infrastructure 10-step critical path
+# ---------------------------------------------------------------------------
+
+  SM_3_infra_step:
+    title: Infrastructure step
+    aggregate: InfraStep
+    initial: BLOCKED
+    terminal: [APPROVED, WAIVED]
+    states:
+      BLOCKED: {kind: locked}
+      READY: {kind: active}
+      IN_PROGRESS: {kind: active}
+      SUBMITTED: {kind: active}
+      UNDER_REVIEW: {kind: active}
+      APPROVED: {kind: success}
+      REJECTED: {kind: active}
+      WAIVED: {kind: success, requires_review_date: true}
+    transitions:
+      - id: S3-T01
+        from: BLOCKED
+        event: UNBLOCK
+        to: READY
+        guards: [all_dependencies_approved_or_waived]
+        effects: [notify_owner, update_critical_path]
+        roles: [SYSTEM]
+      - id: S3-T02
+        from: READY
+        event: START
+        to: IN_PROGRESS
+        guards: [owner_assigned, required_inputs_listed]
+        effects: [start_step_sla]
+        roles: [DISCIPLINE_LEAD, AOR_LEAD]
+      - id: S3-T03
+        from: IN_PROGRESS
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [step_package_complete]
+        effects: [record_submission_receipt]
+        roles: [AOR_LEAD]
+      - id: S3-T04
+        from: SUBMITTED
+        event: ACKNOWLEDGE
+        to: UNDER_REVIEW
+        guards: [authority_receipt_captured]
+        effects: [start_authority_sla]
+        roles: [AOR_LEAD]
+      - id: S3-T05
+        from: UNDER_REVIEW
+        event: APPROVE
+        to: APPROVED
+        guards: [valid_evidence_captured, output_state_recorded]
+        effects: [emit_infra_step_approved, unblock_dependents, update_critical_path]
+        evidence: [authority_output]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S3-T06
+        from: UNDER_REVIEW
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_action]
+        roles: [AOR_LEAD]
+      - id: S3-T07
+        from: REJECTED
+        event: REVISE
+        to: IN_PROGRESS
+        guards: [corrections_recorded]
+        effects: [notify_owner]
+        roles: [DISCIPLINE_LEAD]
+      - id: S3-T08
+        from: [BLOCKED, READY, IN_PROGRESS, SUBMITTED, UNDER_REVIEW, REJECTED]
+        event: WAIVE
+        to: WAIVED
+        guards: [executive_approval_recorded, authority_written_confirmation, review_date_recorded]
+        effects: [unblock_dependents, audit_event]
+        roles: [CLIENT_EXECUTIVE, SYSTEM_ADMIN]
+        dual_control: true
+    invariants:
+      - approved_step_requires_output_state_and_evidence
+      - waived_step_requires_executive_and_authority_confirmation
+
+  SM_3_infra_program:
+    title: Infrastructure program (derived DAG)
+    aggregate: InfraProgram
+    initial: NOT_STARTED
+    terminal: [INFRASTRUCTURE_PERMIT_CLOSED]
+    states:
+      NOT_STARTED: {kind: initial}
+      IN_PROGRESS: {kind: active}
+      BLOCKED: {kind: blocked}
+      INFRASTRUCTURE_PERMIT_CLOSED: {kind: success}
+    transitions:
+      - id: S3P-T01
+        from: NOT_STARTED
+        event: START_PROGRAM
+        to: IN_PROGRESS
+        guards: [at_least_one_step_ready]
+        effects: [initialize_critical_path, notify_program_owner]
+        roles: [SYSTEM]
+      - id: S3P-T02
+        from: IN_PROGRESS
+        event: BLOCK
+        to: BLOCKED
+        guards: [critical_step_blocked_or_rejected]
+        effects: [update_critical_path, notify_executive]
+        roles: [SYSTEM]
+      - id: S3P-T03
+        from: BLOCKED
+        event: UNBLOCK
+        to: IN_PROGRESS
+        guards: [blocking_step_resolved]
+        effects: [update_critical_path, notify_program_owner]
+        roles: [SYSTEM]
+      - id: S3P-T04
+        from: IN_PROGRESS
+        event: CLOSE_PROGRAM
+        to: INFRASTRUCTURE_PERMIT_CLOSED
+        guards: [all_steps_approved_or_waived, final_signoff_evidence_captured]
+        effects: [emit_infrastructure_permit_closed, notify_all]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+    steps:
+      - id: INF-01
+        output_state: BASELINE_DATA_LOCKED
+        depends_on: []
+        lead_time_weeks: [2, 4]
+      - id: INF-02
+        output_state: TIS_APPROVED_ITC
+        depends_on: [INF-01]
+        lead_time_weeks: [8, 12]
+      - id: INF-03
+        output_state: MOBILIZATION_PERMIT_ISSUED
+        depends_on: [INF-02]
+        lead_time_weeks: [4, 6]
+      - id: INF-04
+        output_state: STORMWATER_DESIGN_APPROVED
+        depends_on: [INF-01]
+        lead_time_weeks: [4, 6]
+      - id: INF-05
+        output_state: TSE_NETWORK_APPROVED
+        depends_on: [INF-01]
+        lead_time_weeks: [4, 6]
+      - id: INF-06
+        output_state: POWER_ALLOCATION_APPROVED
+        depends_on: [INF-01]
+        lead_time_weeks: [12, 16]
+        cross_link: MEPS_STEP_04_LDN
+      - id: INF-07
+        output_state: WATER_TELECOM_APPROVED
+        depends_on: [INF-01]
+        lead_time_weeks: [6, 8]
+      - id: INF-08
+        output_state: ALL_INDIVIDUAL_NOCS_ISSUED
+        depends_on: [INF-04, INF-05, INF-06, INF-07]
+        lead_time_weeks: [4, 6]
+      - id: INF-09
+        output_state: COMPOSITE_DRAWING_APPROVED
+        depends_on: [INF-08]
+        lead_time_weeks: [6, 8]
+      - id: INF-10
+        output_state: INFRASTRUCTURE_PERMIT_CLOSED
+        depends_on: [INF-09]
+        lead_time_weeks: [4, 6]
+    derived:
+      critical_path: longest_remaining_lead_time_path
+      next_gate: first_step_not_approved_in_dependency_order
+      blocking_steps: steps in [BLOCKED, REJECTED]
+      program_closed: all steps in [APPROVED, WAIVED]
+    invariants:
+      - step_cannot_start_before_all_dependencies_approved
+      - critical_path_recomputed_on_every_step_change
+
+# ---------------------------------------------------------------------------
+# SM-4 — Third-party supervision and legal authorization
+# ---------------------------------------------------------------------------
+
+  SM_4_third_party:
+    title: Third-party supervision authorization
+    aggregate: ThirdPartyAuthorization
+    initial: CLIENT_DELEGATION_SIGNED
+    terminal: [INSPECTION_ACTIVE, EXPIRED]
+    config:
+      client_letter_ref: AMR-OUT-26-0124
+      client_letter_date: 2026-08-21
+      form_22_ref: B2N-2026-002940
+      form_22_date: 2026-09-08
+      dmt_letter_ref: DMT/PAS/OUT/2026/8415
+      dmt_letter_date: 2026-09-08
+      consultant: Qualiconsult International
+      authorized_scopes: [STRUCTURAL_PLAN_REVIEW, STRUCTURAL_INSPECTION]
+      scope_evidence: "Form 22 checks both 'Reviewing structural plans' and 'Reviewing structural inspection'"
+      dmt_condition: "DMT has no objection provided the consultant submits the appointment through MEPS and completes approvals; supervision starts only after formal approval"
+      project_identity_source: "Form 22: owner Abu Dhabi Housing Authority; developer IMKAN; project B2N-2026-002940"
+    states:
+      CLIENT_DELEGATION_SIGNED: {kind: initial}
+      FORM_22_EXECUTED: {kind: active}
+      MEPS_APPOINTMENT_SUBMITTED: {kind: active}
+      APPOINTMENT_UNDER_PROCESS: {kind: pending_authority}
+      DMT_LICENSING_APPROVED: {kind: success}
+      INSPECTION_ACTIVE: {kind: success}
+      REJECTED: {kind: terminal_alert}
+      SUSPENDED: {kind: active}
+      EXPIRED: {kind: terminal_alert}
+    transitions:
+      - id: S4-T01
+        from: CLIENT_DELEGATION_SIGNED
+        event: EXECUTE_FORM_22
+        to: FORM_22_EXECUTED
+        guards: [signed_form_22_uploaded, consultant_compliance_pledge_signed]
+        effects: [notify_aor, notify_client]
+        evidence: [form_22, client_delegation]
+        roles: [CLIENT_EXECUTIVE, STAKEHOLDER_MANAGER]
+      - id: S4-T02
+        from: FORM_22_EXECUTED
+        event: SUBMIT_MEPS_APPOINTMENT
+        to: MEPS_APPOINTMENT_SUBMITTED
+        guards: [meps_submission_receipt_captured]
+        effects: [start_appointment_sla]
+        roles: [AOR_LEAD]
+      - id: S4-T03
+        from: MEPS_APPOINTMENT_SUBMITTED
+        event: RECEIVE_UNDER_PROCESS
+        to: APPOINTMENT_UNDER_PROCESS
+        guards: [dmt_letter_8415_captured]
+        effects: [notify_client_executive, set_follow_up_date]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S4-T04
+        from: APPOINTMENT_UNDER_PROCESS
+        event: APPROVE_LICENSING
+        to: DMT_LICENSING_APPROVED
+        guards: [dmt_executive_director_approval_captured]
+        effects: [notify_all, enable_activation_form_only]
+        evidence: [dmt_licensing_approval]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S4-T05
+        from: DMT_LICENSING_APPROVED
+        event: ACTIVATE_INSPECTION
+        to: INSPECTION_ACTIVE
+        guards: [authorized_scope_covers_required_work, inspection_scope_defined, inspector_credentials_valid, assignment_recorded]
+        effects: [unlock_structural_plan_review, unlock_inspection_tasks, unlock_soil_stamp, notify_all]
+        roles: [THIRD_PARTY_INSPECTOR, STAKEHOLDER_MANAGER]
+      - id: S4-T06
+        from: [APPOINTMENT_UNDER_PROCESS, DMT_LICENSING_APPROVED]
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [lock_inspection_tasks, create_high_risk]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S4-T07
+        from: INSPECTION_ACTIVE
+        event: SUSPEND
+        to: SUSPENDED
+        guards: [suspension_reason_recorded]
+        effects: [lock_structural_plan_review, lock_inspection_tasks, lock_soil_stamp, invalidate_dependency_epoch, notify_client_executive]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S4-T08
+        from: SUSPENDED
+        event: RESUME
+        to: INSPECTION_ACTIVE
+        guards: [suspension_resolved, reinstatement_evidence_captured]
+        effects: [recompute_authorized_plan_review_inspection_and_soil_eligibility]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S4-T09
+        from: [DMT_LICENSING_APPROVED, INSPECTION_ACTIVE, SUSPENDED]
+        event: EXPIRE
+        to: EXPIRED
+        guards: [authorization_expiry_passed]
+        effects: [lock_structural_plan_review, lock_inspection_tasks, lock_soil_stamp, invalidate_dependency_epoch, create_high_risk]
+        roles: [SYSTEM]
+    invariants:
+      - inspection_tasks_locked_until_inspection_active
+      - structural_plan_review_locked_until_authorization_active
+      - soil_stamp_requires_inspection_active
+      - no_inspection_signoff_without_active_authorization
+      - authorized_scope_must_cover_both_plan_review_and_inspection_when_required
+
+# ---------------------------------------------------------------------------
+# SM-5 — Authority comment lifecycle
+# ---------------------------------------------------------------------------
+
+  SM_5_comment:
+    title: Authority comment
+    aggregate: Comment
+    initial: NEW
+    terminal: [CLOSED, WITHDRAWN]
+    states:
+      NEW: {kind: initial}
+      TRIAGED: {kind: active}
+      ASSIGNED: {kind: active}
+      RESPONSE_DRAFTED: {kind: active}
+      READY_FOR_UPLOAD: {kind: active}
+      RESUBMITTED: {kind: pending_authority}
+      CLOSED: {kind: success}
+      REOPENED: {kind: active}
+      DISPUTED: {kind: active}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S5-T01
+        from: NEW
+        event: TRIAGE
+        to: TRIAGED
+        guards: [category_assigned, discipline_assigned]
+        effects: [start_response_clock, update_kpi]
+        roles: [AOR_LEAD, DISCIPLINE_LEAD]
+      - id: S5-T02
+        from: TRIAGED
+        event: ASSIGN
+        to: ASSIGNED
+        guards: [owner_assigned, due_date_set]
+        effects: [notify_owner]
+        roles: [AOR_LEAD]
+      - id: S5-T03
+        from: ASSIGNED
+        event: DRAFT_RESPONSE
+        to: RESPONSE_DRAFTED
+        guards: [response_text_entered]
+        effects: [notify_reviewer]
+        roles: [DISCIPLINE_LEAD]
+      - id: S5-T04
+        from: RESPONSE_DRAFTED
+        event: VALIDATE_RESPONSE
+        to: READY_FOR_UPLOAD
+        guards: [revised_drawing_uploaded, stamped_revision_present_if_structural, discipline_lead_approval]
+        effects: [add_to_resubmission_bundle, stop_response_clock]
+        roles: [AOR_LEAD, THIRD_PARTY_INSPECTOR]
+      - id: S5-T05
+        from: READY_FOR_UPLOAD
+        event: SUBMIT_RESPONSE
+        to: RESUBMITTED
+        guards: [bundle_submitted, submission_receipt_captured]
+        effects: [notify_authority, start_closure_clock]
+        roles: [AOR_LEAD]
+      - id: S5-T06
+        from: RESUBMITTED
+        event: CLOSE
+        to: CLOSED
+        guards: [authority_closure_evidence_captured]
+        effects: [update_kpi, notify_all, check_bundle_closure]
+        evidence: [authority_closure]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S5-T07
+        from: RESUBMITTED
+        event: REOPEN
+        to: REOPENED
+        guards: [authority_rejection_evidence_captured]
+        effects: [restart_response_clock, notify_owner]
+        roles: [AOR_LEAD]
+      - id: S5-T08
+        from: REOPENED
+        event: REASSIGN
+        to: ASSIGNED
+        guards: [owner_assigned]
+        effects: [notify_owner]
+        roles: [AOR_LEAD]
+      - id: S5-T09
+        from: [NEW, TRIAGED, ASSIGNED, RESPONSE_DRAFTED, READY_FOR_UPLOAD, RESUBMITTED, REOPENED]
+        event: DISPUTE
+        to: DISPUTED
+        guards: [dispute_reason_recorded]
+        effects: [notify_stakeholder, create_action]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S5-T10
+        from: DISPUTED
+        event: RESUME
+        to: ASSIGNED
+        guards: [resolution_recorded]
+        effects: [notify_owner]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S5-T11
+        from: [NEW, TRIAGED, ASSIGNED, RESPONSE_DRAFTED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+    invariants:
+      - ready_for_upload_requires_stamped_revision_if_structural
+      - closed_requires_authority_evidence
+      - open_comment_over_10_business_days_flags_kpi
+
+# ---------------------------------------------------------------------------
+# SM-6 — Submission / resubmission bundle
+# ---------------------------------------------------------------------------
+
+  SM_6_bundle:
+    title: Submission bundle
+    aggregate: SubmissionBundle
+    initial: DRAFT
+    terminal: [CLOSED, WITHDRAWN, SUPERSEDED]
+    states:
+      DRAFT: {kind: initial}
+      IN_REVIEW: {kind: active}
+      READY: {kind: active}
+      SUBMITTED: {kind: pending_authority}
+      ACKNOWLEDGED: {kind: pending_authority}
+      UNDER_REVIEW: {kind: pending_authority}
+      APPROVED: {kind: success}
+      MODIFICATION_REQUIRED: {kind: active}
+      REJECTED: {kind: terminal_alert}
+      CLOSED: {kind: success}
+      WITHDRAWN: {kind: terminal}
+      SUPERSEDED: {kind: terminal}
+    transitions:
+      - id: S6-T01
+        from: DRAFT
+        event: SUBMIT_FOR_REVIEW
+        to: IN_REVIEW
+        guards: [all_items_added]
+        effects: [notify_reviewer]
+        roles: [AOR_LEAD]
+      - id: S6-T02
+        from: IN_REVIEW
+        event: MARK_READY
+        to: READY
+        guards: [all_items_validated, no_open_blocker, bundle_hash_recorded, authorized_signatory]
+        effects: [enable_submission]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S6-T03
+        from: IN_REVIEW
+        event: RETURN_TO_DRAFT
+        to: DRAFT
+        guards: [return_reason_recorded]
+        effects: [notify_owner]
+        roles: [AOR_LEAD]
+      - id: S6-T04
+        from: READY
+        event: SUBMIT
+        to: SUBMITTED
+        guards: [submission_receipt_captured]
+        effects: [start_review_sla, notify_stakeholder]
+        roles: [AOR_LEAD]
+      - id: S6-T05
+        from: SUBMITTED
+        event: ACKNOWLEDGE
+        to: ACKNOWLEDGED
+        guards: [acknowledgement_captured]
+        effects: [start_authority_sla]
+        roles: [AOR_LEAD]
+      - id: S6-T06
+        from: ACKNOWLEDGED
+        event: START_REVIEW
+        to: UNDER_REVIEW
+        guards: [authority_review_started]
+        effects: [update_kpi]
+        roles: [AOR_LEAD]
+      - id: S6-T07
+        from: UNDER_REVIEW
+        event: APPROVE
+        to: APPROVED
+        guards: [approval_evidence_captured]
+        effects: [close_related_comments, notify_all]
+        roles: [AOR_LEAD]
+      - id: S6-T08
+        from: UNDER_REVIEW
+        event: RECEIVE_COMMENTS
+        to: MODIFICATION_REQUIRED
+        guards: [comments_linked]
+        effects: [create_comments, notify_owners]
+        roles: [AOR_LEAD]
+      - id: S6-T09
+        from: UNDER_REVIEW
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [create_high_risk, notify_executive]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S6-T10
+        from: MODIFICATION_REQUIRED
+        event: REVISE
+        to: DRAFT
+        guards: [new_revision_created]
+        effects: [notify_owner]
+        roles: [AOR_LEAD]
+      - id: S6-T11
+        from: [DRAFT, IN_REVIEW, READY, SUBMITTED, ACKNOWLEDGED, UNDER_REVIEW, MODIFICATION_REQUIRED]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S6-T12
+        from: [DRAFT, IN_REVIEW, READY, SUBMITTED, ACKNOWLEDGED, UNDER_REVIEW, MODIFICATION_REQUIRED]
+        event: SUPERSEDE
+        to: SUPERSEDED
+        guards: [replacement_bundle_recorded]
+        effects: [link_replacement, audit_event]
+        roles: [AOR_LEAD]
+      - id: S6-T13
+        from: [APPROVED, REJECTED]
+        event: CLOSE
+        to: CLOSED
+        guards: [closure_evidence_captured]
+        effects: [update_kpi]
+        roles: [AOR_LEAD]
+    invariants:
+      - ready_requires_bundle_hash_and_signatory
+      - resubmission_creates_new_revision_never_overwrites
+
+# ---------------------------------------------------------------------------
+# SM-7 — Risk and blocker
+# ---------------------------------------------------------------------------
+
+  SM_7_risk:
+    title: Risk and blocker
+    aggregate: Risk
+    initial: OPEN
+    terminal: [CLOSED]
+    states:
+      OPEN: {kind: initial}
+      ASSESSED: {kind: active}
+      MITIGATING: {kind: active}
+      ESCALATED: {kind: active}
+      RESOLVED: {kind: success}
+      CLOSED: {kind: success}
+      ACCEPTED: {kind: active, requires_review_date: true}
+    transitions:
+      - id: S7-T01
+        from: OPEN
+        event: ASSESS
+        to: ASSESSED
+        guards: [severity_assigned, owner_assigned, decision_due_date_set]
+        effects: [update_executive_view]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S7-T02
+        from: ASSESSED
+        event: START_MITIGATION
+        to: MITIGATING
+        guards: [mitigation_plan_recorded]
+        effects: [notify_owner]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S7-T03
+        from: [ASSESSED, MITIGATING]
+        event: ESCALATE
+        to: ESCALATED
+        guards: [escalation_level_assigned, escalation_reason_recorded]
+        effects: [notify_executive, create_escalation_record]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S7-T04
+        from: ESCALATED
+        event: DEESCALATE
+        to: MITIGATING
+        guards: [escalation_resolved, reason_recorded]
+        effects: [notify_owner]
+        roles: [CLIENT_EXECUTIVE]
+      - id: S7-T05
+        from: MITIGATING
+        event: RESOLVE
+        to: RESOLVED
+        guards: [resolution_evidence_captured]
+        effects: [notify_all, update_executive_view]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S7-T06
+        from: RESOLVED
+        event: CLOSE
+        to: CLOSED
+        guards: [closure_approved]
+        effects: [update_kpi]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S7-T07
+        from: ASSESSED
+        event: ACCEPT_RISK
+        to: ACCEPTED
+        guards: [executive_approval_recorded, review_date_recorded, rationale_recorded]
+        effects: [notify_executive]
+        roles: [CLIENT_EXECUTIVE]
+        dual_control: true
+      - id: S7-T08
+        from: ACCEPTED
+        event: REOPEN
+        to: OPEN
+        guards: [review_date_reached_or_conditions_changed, reason_recorded]
+        effects: [notify_all]
+        roles: [STAKEHOLDER_MANAGER]
+    invariants:
+      - critical_risk_requires_executive_visibility
+      - accepted_risk_requires_review_date
+
+# ---------------------------------------------------------------------------
+# SM-8 — Escalation and notification
+# ---------------------------------------------------------------------------
+
+  SM_8_escalation:
+    title: Escalation notification
+    aggregate: Escalation
+    initial: PENDING
+    terminal: [CLOSED]
+    states:
+      PENDING: {kind: initial}
+      SENT: {kind: active}
+      DELIVERED: {kind: active}
+      ACKNOWLEDGED: {kind: active}
+      ESCALATED: {kind: active}
+      FAILED: {kind: active}
+      CLOSED: {kind: success}
+    transitions:
+      - id: S8-T01
+        from: PENDING
+        event: SEND
+        to: SENT
+        guards: [dedupe_key_unique, recipient_resolved, template_rendered]
+        effects: [record_delivery_attempt]
+        roles: [SYSTEM]
+      - id: S8-T02
+        from: SENT
+        event: DELIVER
+        to: DELIVERED
+        guards: [delivery_webhook_received]
+        effects: [update_delivery_status]
+        roles: [SYSTEM]
+      - id: S8-T03
+        from: DELIVERED
+        event: ACKNOWLEDGE
+        to: ACKNOWLEDGED
+        guards: [acknowledgment_recorded]
+        effects: [stop_escalation_timer]
+        roles: [STAKEHOLDER_MANAGER, AOR_LEAD, CLIENT_EXECUTIVE]
+      - id: S8-T04
+        from: [DELIVERED, ACKNOWLEDGED]
+        event: ESCALATE
+        to: ESCALATED
+        guards: [acknowledgment_deadline_passed, next_level_resolved]
+        effects: [notify_next_level, extend_timer]
+        roles: [SYSTEM]
+      - id: S8-T05
+        from: SENT
+        event: FAIL
+        to: FAILED
+        guards: [delivery_failed]
+        effects: [schedule_retry, fallback_in_app]
+        roles: [SYSTEM]
+      - id: S8-T06
+        from: FAILED
+        event: RETRY
+        to: PENDING
+        guards: [retry_budget_available]
+        effects: [increment_attempt]
+        roles: [SYSTEM]
+      - id: S8-T07
+        from: [ACKNOWLEDGED, ESCALATED]
+        event: CLOSE
+        to: CLOSED
+        guards: [condition_resolved_or_acknowledged]
+        effects: [update_kpi]
+        roles: [STAKEHOLDER_MANAGER]
+    invariants:
+      - dedupe_key_is_rule_entity_business_date
+      - no_more_than_one_notification_per_dedupe_key
+
+# ---------------------------------------------------------------------------
+# SM-9 — Report generation
+# ---------------------------------------------------------------------------
+
+  SM_9_report:
+    title: Report generation
+    aggregate: Report
+    initial: REQUESTED
+    terminal: [SUPERSEDED]
+    states:
+      REQUESTED: {kind: initial}
+      GENERATING: {kind: active}
+      IN_REVIEW: {kind: active}
+      PUBLISHED: {kind: success, immutable: true}
+      FAILED: {kind: active}
+      SUPERSEDED: {kind: terminal}
+    transitions:
+      - id: S9-T01
+        from: REQUESTED
+        event: START
+        to: GENERATING
+        guards: [template_version_resolved, data_snapshot_created]
+        effects: [render_report]
+        roles: [SYSTEM, STAKEHOLDER_MANAGER]
+      - id: S9-T02
+        from: GENERATING
+        event: COMPLETE
+        to: IN_REVIEW
+        guards: [render_succeeded, snapshot_hash_recorded]
+        effects: [notify_reviewer]
+        roles: [SYSTEM]
+      - id: S9-T03
+        from: IN_REVIEW
+        event: PUBLISH
+        to: PUBLISHED
+        guards: [approver_recorded, distribution_list_resolved]
+        effects: [distribute_report, archive_snapshot]
+        roles: [STAKEHOLDER_MANAGER, CLIENT_EXECUTIVE]
+      - id: S9-T04
+        from: IN_REVIEW
+        event: REGENERATE
+        to: GENERATING
+        guards: [reason_recorded]
+        effects: [create_new_snapshot]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S9-T05
+        from: GENERATING
+        event: FAIL
+        to: FAILED
+        guards: [render_error_recorded]
+        effects: [notify_admin]
+        roles: [SYSTEM]
+      - id: S9-T06
+        from: FAILED
+        event: RETRY
+        to: REQUESTED
+        guards: [retry_budget_available]
+        effects: [increment_attempt]
+        roles: [SYSTEM]
+      - id: S9-T07
+        from: PUBLISHED
+        event: SUPERSEDE
+        to: SUPERSEDED
+        guards: [newer_report_published]
+        effects: [link_newer_report]
+        roles: [SYSTEM]
+    invariants:
+      - published_report_is_immutable
+      - report_is_reproducible_from_snapshot_and_template
+
+# ---------------------------------------------------------------------------
+# SM-10 — Document and evidence
+# ---------------------------------------------------------------------------
+
+  SM_10_document:
+    title: Document and evidence lifecycle
+    aggregate: DocumentVersion
+    initial: UPLOADED
+    terminal: [SUPERSEDED]
+    states:
+      UPLOADED: {kind: initial}
+      SCANNING: {kind: active}
+      QUARANTINED: {kind: blocked}
+      EXTRACTED: {kind: active}
+      VALIDATED: {kind: active}
+      ACTIVE: {kind: success}
+      EXPIRING: {kind: active}
+      EXPIRED: {kind: blocked}
+      REJECTED: {kind: terminal}
+      SUPERSEDED: {kind: terminal}
+    transitions:
+      - id: S10-T01
+        from: UPLOADED
+        event: SCAN
+        to: SCANNING
+        guards: [hash_computed, file_type_allowed, size_within_limit]
+        effects: [run_malware_scan]
+        roles: [SYSTEM]
+      - id: S10-T02
+        from: SCANNING
+        event: EXTRACT_OK
+        to: EXTRACTED
+        guards: [scan_clean]
+        effects: [text_extraction, queued_drex_extraction]
+        roles: [SYSTEM]
+      - id: S10-T03
+        from: SCANNING
+        event: QUARANTINE
+        to: QUARANTINED
+        guards: [scan_threat_detected]
+        effects: [block_document, notify_admin]
+        roles: [SYSTEM]
+      - id: S10-T04
+        from: EXTRACTED
+        event: VALIDATE
+        to: VALIDATED
+        guards: [document_type_identified, authority_reference_present_if_required, hash_verified, independent_validator_for_regulated_class, validator_role_and_scope_match_class]
+        effects: [store_extraction_fields, notify_owner]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER, THIRD_PARTY_INSPECTOR]
+      - id: S10-T05
+        from: VALIDATED
+        event: ACTIVATE
+        to: ACTIVE
+        guards: [expiry_date_present_if_applicable, scan_clean, not_expired, independent_validation_current_if_regulated]
+        effects: [link_to_aggregate, schedule_expiry_alerts]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S10-T06
+        from: ACTIVE
+        event: MARK_EXPIRING
+        to: EXPIRING
+        guards: [expiry_within_90_days]
+        effects: [notify_owner, create_renewal_action]
+        roles: [SYSTEM]
+      - id: S10-T07
+        from: EXPIRING
+        event: EXPIRE
+        to: EXPIRED
+        guards: [expiry_date_passed]
+        effects: [recompute_dependent_gates, notify_all]
+        roles: [SYSTEM]
+      - id: S10-T08
+        from: EXPIRING
+        event: RENEW
+        to: ACTIVE
+        guards: [renewed_document_validated]
+        effects: [update_expiry, schedule_alerts]
+        roles: [AOR_LEAD]
+      - id: S10-T09
+        from: [EXTRACTED, VALIDATED, QUARANTINED]
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [notify_owner]
+        roles: [AOR_LEAD, STAKEHOLDER_MANAGER]
+      - id: S10-T10
+        from: [ACTIVE, EXPIRING, EXPIRED]
+        event: SUPERSEDE
+        to: SUPERSEDED
+        guards: [replacement_document_active]
+        effects: [link_replacement, recompute_dependent_gates]
+        roles: [AOR_LEAD, SYSTEM]
+    invariants:
+      - active_requires_hash_and_type
+      - expired_evidence_cannot_pass_a_gate
+      - document_versions_are_immutable
+
+# ---------------------------------------------------------------------------
+# SM-11 — Baseline change request
+# ---------------------------------------------------------------------------
+
+  SM_11_baseline_change:
+    title: Baseline change request
+    aggregate: BaselineChangeRequest
+    initial: DRAFT
+    terminal: [APPLIED, WITHDRAWN]
+    states:
+      DRAFT: {kind: initial}
+      IMPACT_ASSESSMENT: {kind: active}
+      PENDING_EXEC_APPROVAL: {kind: pending_approval}
+      APPROVED: {kind: success}
+      REJECTED: {kind: active}
+      APPLIED: {kind: success, immutable: true}
+      WITHDRAWN: {kind: terminal}
+    transitions:
+      - id: S11-T01
+        from: DRAFT
+        event: ASSESS
+        to: IMPACT_ASSESSMENT
+        guards: [change_description_recorded, affected_parcels_listed]
+        effects: [notify_impact_owners]
+        roles: [STAKEHOLDER_MANAGER, AOR_LEAD]
+      - id: S11-T02
+        from: IMPACT_ASSESSMENT
+        event: SUBMIT_FOR_APPROVAL
+        to: PENDING_EXEC_APPROVAL
+        guards: [impact_assessment_complete, affected_cases_listed]
+        effects: [notify_client_executive]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S11-T03
+        from: PENDING_EXEC_APPROVAL
+        event: APPROVE
+        to: APPROVED
+        guards: [executive_approval_recorded]
+        effects: [enable_apply]
+        roles: [CLIENT_EXECUTIVE]
+      - id: S11-T04
+        from: PENDING_EXEC_APPROVAL
+        event: REJECT
+        to: REJECTED
+        guards: [rejection_reason_recorded]
+        effects: [notify_owner]
+        roles: [CLIENT_EXECUTIVE]
+      - id: S11-T05
+        from: REJECTED
+        event: REVISE
+        to: DRAFT
+        guards: [revision_recorded]
+        effects: [notify_owner]
+        roles: [STAKEHOLDER_MANAGER]
+      - id: S11-T06
+        from: APPROVED
+        event: APPLY
+        to: APPLIED
+        guards: [impact_actions_started, new_baseline_version_created]
+        effects: [create_baseline_version, flag_affected_cases, block_downstream_until_revalidated]
+        roles: [SYSTEM_ADMIN, CLIENT_EXECUTIVE]
+        dual_control: true
+      - id: S11-T07
+        from: [DRAFT, IMPACT_ASSESSMENT]
+        event: WITHDRAW
+        to: WITHDRAWN
+        guards: [reason_recorded]
+        effects: [audit_event]
+        roles: [STAKEHOLDER_MANAGER]
+
+# ---------------------------------------------------------------------------
+# Cross-machine orchestration
+# ---------------------------------------------------------------------------
+
+orchestration:
+  - event: MASTERPLAN_FROZEN
+    handlers:
+      - unlock_parcel_level_meps_cases
+      - notify_all_stakeholders
+      - snapshot_baseline_kpi
+  - event: SITE_CLEARANCE_ALL_APPROVED
+    handlers:
+      - unlock_sm_2c_soil_work
+      - recompute_sm_2e_readiness
+      - notify_aor_and_stakeholder
+  - event: SITE_CLEARANCE_GOVERNMENT_EXEMPT
+    handlers:
+      - unlock_sm_2c_soil_work
+      - recompute_sm_2e_readiness
+      - create_exemption_review_action
+      - notify_all_stakeholders
+  - event: APPROVAL_RELIANCE_VERIFIED
+    handlers:
+      - recompute_site_clearance_case
+      - recompute_sm_2e_readiness
+  - event: ENOC_INFRASTRUCTURE_APPROVED
+    handlers:
+      - recompute_taqa_super_plot_entities
+      - recompute_sm_2e_readiness
+  - event: PACKAGE_SCOPE_APPROVED
+    handlers:
+      - recompute_sm_2e_readiness
+      - snapshot_package_scope
+  - event: CONTRACTOR_ASSIGNED
+    handlers:
+      - recompute_step05_readiness  # assignment alone never enables issuance before Step 04 and appointment approval
+      - notify_aor
+  - event: STEP03A_REQUIREMENT_ACTIVATED
+    handlers:
+      - create_step03a_workstream
+      - notify_owner
+  - event: STEP03B_REQUIREMENT_ACTIVATED
+    handlers:
+      - create_step03b_workstream
+      - notify_owner
+  - event: THIRD_PARTY_INSPECTION_ACTIVE
+    handlers:
+      - unlock_structural_plan_review
+      - unlock_inspection_tasks
+      - unlock_soil_report_stamp
+      - notify_qualiconsult
+  - event: SOIL_REPORT_STAMPED
+    handlers:
+      - recompute_sm_2e_readiness
+      - notify_aor
+  - event: INFRA_STEP_APPROVED
+    handlers:
+      - unblock_dependent_infra_steps
+      - update_critical_path
+      - recompute_step04_ldn_cross_link
+  - event: COMMENT_OPEN_GT_7_BUSINESS_DAYS
+    handlers:
+      - trigger_escalation_rule_1
+  - event: ENTITY_REJECTED_INFRASTRUCTURE_UNAVAILABLE
+    handlers:
+      - create_high_risk
+      - trigger_escalation_rule_2
+  - event: STEP04_READY_AND_SOIL_PENDING
+    handlers:
+      - lock_step04_release
+      - trigger_escalation_rule_3
+  - event: APPLICATION_SLA_OVERFLOW
+    handlers:
+      - highlight_red_on_executive_dashboard
+      - generate_follow_up_letter_from_template
+      - trigger_escalation_rule_4
+  - event: DREX_RECOMMENDATION_CREATED
+    handlers:
+      - persist_decision_record
+      - if_mode_advisory_show_recommendation
+    forbidden_handlers:
+      - any_state_transition
+
+# ---------------------------------------------------------------------------
+# Escalation rules (PRD §6.2)
+# ---------------------------------------------------------------------------
+
+escalation_rules:
+  - id: RULE_1
+    name: Site clearance delay
+    condition: site_clearance_entity_state in [MODIFICATION_REQUIRED, PENDING_DOCUMENTS] for > 7 business days
+    action: daily alert to AOR discipline lead and stakeholder manager
+    dedupe: rule_1 + entity_id + business_date
+  - id: RULE_2
+    name: Unavailable utility infrastructure
+    condition: entity_state == REJECTED_INFRASTRUCTURE_UNAVAILABLE or unavailable_service_comment_open
+    action: create high-priority blocker + executive notice to IMKAN legal and regulatory escalation
+    dedupe: rule_2 + entity_id + business_date
+  - id: RULE_3
+    name: Third-party inspection gate
+    condition: step04 == READY_FOR_SUBMISSION and soil_report == PENDING_THIRD_PARTY_STAMP
+    action: lock step04 release + action request to Qualiconsult lead inspector
+    dedupe: rule_3 + case_id + business_date
+  - id: RULE_4
+    name: Authority SLA overflow
+    condition: application_review_duration > internal_sla_target_days
+    action: red highlight on executive dashboard + pre-filled follow-up letter from approved template
+    dedupe: rule_4 + application_id + business_date
+    sla_is_internal_target: true
+
+# ---------------------------------------------------------------------------
+# DREX integration (Nace AI)
+# ---------------------------------------------------------------------------
+
+drex:
+  provider: nace_ai
+  decision_endpoint: https://console.nace.ai/v1/systemone
+  document_endpoint_base: https://console.nace.ai/v1/documents
+  auth: bearer_token_from_secret_manager
+  model_routing:
+    text_classification: drex-v1.5
+    vision_or_scanned_documents: drex-max
+    self_hosted_air_gapped: drex-v2.0
+    development_alias: drex-latest
+  response_contract: typed_only_no_free_text
+  modes: ["OFF", SHADOW, ADVISORY, ASSISTED]
+  autonomous_mode: forbidden
+  state_string:
+    max_tokens_routine: 12000
+    delimit_untrusted_text: true
+    no_cross_project_data: true
+    no_pii_unless_required: true
+  timeouts:
+    text_seconds: 3
+    vision_or_long_document_seconds: 8
+    retries: 1
+    circuit_breaker_failures: 5
+  confidence_policy:
+    display: [LOW, MEDIUM, HIGH]
+    default_accept: false
+    abstain_below: 0.60
+    advisory_min: 0.75
+  option_sets:
+    versioned: true
+    require_unclear_option: true
+    change_requires_eval_rerun: true
+  decision_types:
+    - id: D1
+      name: Document type
+      question_type: choice
+      options: [NOC, AUTHORITY_LETTER, STAMPED_DRAWING, SITE_PLAN, CONTRACT, OTHER, UNCLEAR]
+      first_mode: SHADOW
+      sprint: 2
+      metric: macro_f1
+      threshold: 0.90
+    - id: D2
+      name: Evidence fields
+      question_type: document_extract_ground
+      fields: [authority, reference_no, issue_date, expiry_date, plot_id, status]
+      first_mode: SHADOW
+      sprint: 2
+      metric: field_f1
+      threshold: 0.95
+    - id: D3
+      name: Third-party stamp present
+      question_type: noul
+      options: ["yes", "no", unclear]
+      first_mode: SHADOW
+      sprint: 3
+      metric: precision_recall
+      threshold: 0.95
+    - id: D4
+      name: Comment category
+      question_type: choice
+      options: [SPATIAL_GEOMETRY, UTILITY_CAPACITY, DOCUMENTATION_DEFICIT, FEE_PAYMENT, POLICY_UNDERTAKING, UNCLEAR]
+      first_mode: SHADOW
+      sprint: 3
+      metric: macro_f1
+      threshold: 0.85
+    - id: D5
+      name: Comment discipline routing
+      question_type: choice
+      options: [ARCHITECTURE, STRUCTURE, MEP, INFRASTRUCTURE, ESTIDAMA, LDN, OTHER]
+      first_mode: SHADOW
+      sprint: 3
+      metric: top_1_accuracy
+      threshold: 0.85
+    - id: D6
+      name: Response completeness
+      question_type: noul
+      options: [addressed, not_addressed, unclear]
+      first_mode: SHADOW
+      sprint: 3
+      metric: recall
+      threshold: 0.95
+    - id: D7
+      name: Duplicate submission
+      question_type: noul
+      options: [duplicate, not_duplicate, unclear]
+      first_mode: SHADOW
+      sprint: 3
+      metric: precision
+      threshold: 0.90
+    - id: D8
+      name: Risk severity
+      question_type: score
+      levels: [LOW, MEDIUM, HIGH, CRITICAL]
+      first_mode: SHADOW
+      sprint: 4
+      metric: quadratic_weighted_kappa
+      threshold: 0.75
+    - id: D9
+      name: Escalation route
+      question_type: choice
+      options: [AOR_LEAD, STAKEHOLDER_MANAGER, IMKAN_LEGAL, EXECUTIVE, AUTHORITY_FOLLOW_UP, UNCLEAR]
+      first_mode: SHADOW
+      sprint: 4
+      metric: top_1_accuracy
+      threshold: 0.85
+    - id: D10
+      name: Readiness judgment
+      question_type: noul
+      options: [complete, incomplete, unclear]
+      first_mode: SHADOW
+      sprint: 4
+      metric: agreement
+      threshold: 0.85
+    - id: D11
+      name: Anomaly type
+      question_type: choice
+      options: [STATUS_DRIFT, EXPIRED_EVIDENCE, CONTRADICTORY_DATES, MISSING_AUTHORITY_REF, NONE, UNCLEAR]
+      first_mode: SHADOW
+      sprint: 4
+      metric: macro_f1
+      threshold: 0.85
+    - id: D12
+      name: Report highlight ranking
+      question_type: score
+      levels: [1, 2, 3, 4, 5]
+      first_mode: SHADOW
+      sprint: 5
+      metric: ndcg_at_5
+      threshold: 0.80
+  guardrails:
+    no_direct_state_write: true
+    fail_closed: true
+    kill_switch_per_decision_type: true
+    global_kill_switch: true
+    monthly_budget_cap: true
+    pii_redaction: true
+    prompt_injection_containment: option_set_only
+    citation_required_for_document_decisions: true
+    no_training_on_client_data_without_consent: true
+    production_model_ids_pinned: true
+  eval:
+    golden_set_min_per_type: 100
+    golden_set_min_d2: 300
+    human_audit_sample_percent: 10
+    regression_tolerance_percent: 2
+    calibration_ece_max: 0.08
+    coverage_min_percent: 95
+    human_acceptance_min_percent: 70
+    human_kappa_min: 0.80
+    safety_violations_allowed: 0
+    promotion_requires_consecutive_runs: 2
+    promotion_signoff: [STAKEHOLDER_MANAGER, ENGINEERING_LEAD]
+
+# ---------------------------------------------------------------------------
+# Release gates
+# ---------------------------------------------------------------------------
+
+release_gates:
+  - id: G1
+    metric: declared_transition_coverage
+    threshold: 100%
+    blocking: true
+  - id: G2
+    metric: illegal_transition_acceptance
+    threshold: 0
+    blocking: true
+  - id: G3
+    metric: invariants_passed
+    threshold: 100%
+    blocking: true
+  - id: G4
+    metric: meps_reconciliation
+    threshold: 100%
+    blocking: true
+  - id: G5
+    metric: rbac_matrix
+    threshold: 100%
+    blocking: true
+  - id: G6
+    metric: audit_completeness
+    threshold: 100%
+    blocking: true
+  - id: G7
+    metric: drex_gate_skip_recommendations
+    threshold: 0
+    blocking: true
+  - id: G8
+    metric: p0_scenarios
+    threshold: 100%
+    blocking: true
